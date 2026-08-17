@@ -1,0 +1,19 @@
+*.iml
+.gradle
+/local.properties
+/.idea
+.DS_Store
+# Matches every module's build output, not just the root one. `/build` alone
+# left `app/build/` tracked, which committed ~300MB of compiled artifacts.
+build/
+# Kotlin compiler scratch/error logs, written next to the project.
+.kotlin/
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+
+# Signing materials never go into git
+keystore.properties
+*.jks
+*.keystore
