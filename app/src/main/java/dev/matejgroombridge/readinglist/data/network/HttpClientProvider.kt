@@ -1,8 +1,11 @@
 package dev.matejgroombridge.readinglist.data.network
 
+import dev.matejgroombridge.readinglist.BuildConfig
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
+import io.ktor.client.plugins.HttpRequestRetry
 import io.ktor.client.plugins.HttpTimeout
+import io.ktor.client.plugins.UserAgent
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.serialization.json.Json
@@ -32,14 +35,43 @@ object HttpClientProvider {
         HttpClient(OkHttp) {
             expectSuccess = true
             install(ContentNegotiation) { json(json) }
+
+            // Open Library asks API consumers to identify themselves, and
+            // generic or absent agents are the first thing they throttle.
+            install(UserAgent) {
+                agent = "ReadingList/${BuildConfig.VERSION_NAME} " +
+                    "(Android; https://github.com/MatejGroombridge/reading-list-app)"
+            }
+
+            /*
+             * Open Library is a free, donation-funded service and it is
+             * genuinely flaky — it intermittently serves nginx 503 pages for
+             * minutes at a time while other endpoints stay healthy. Without
+             * retries a single unlucky 503 surfaces to the user as "search is
+             * broken", which is what happened on the first release.
+             *
+             * Only server errors and transport failures are retried. A 4xx is
+             * our own bad request and would fail identically every time.
+             */
+            install(HttpRequestRetry) {
+                retryOnServerErrors(maxRetries = MAX_RETRIES)
+                retryOnException(maxRetries = MAX_RETRIES, retryOnTimeout = true)
+                exponentialDelay(base = 2.0, maxDelayMs = 4_000)
+            }
+
             install(HttpTimeout) {
-                // Open Library can be slow under load, but a search that
-                // hasn't landed in 15s is better surfaced as a retryable
-                // error than left spinning.
+                // Per attempt, not per search — the retry plugin wraps this.
                 requestTimeoutMillis = 15_000
                 connectTimeoutMillis = 10_000
                 socketTimeoutMillis = 15_000
             }
         }
     }
+
+    /**
+     * Deliberately small. Each retry is backed off, so a higher count would
+     * leave the user watching a spinner for the better part of a minute when
+     * Open Library is having a bad day — better to fail and offer Retry.
+     */
+    private const val MAX_RETRIES = 3
 }

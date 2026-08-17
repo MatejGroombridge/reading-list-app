@@ -9,6 +9,8 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import dev.matejgroombridge.readinglist.data.model.Book
 import dev.matejgroombridge.readinglist.data.network.OpenLibraryApi
 import dev.matejgroombridge.readinglist.data.repository.BookRepository
+import io.ktor.client.plugins.ClientRequestException
+import io.ktor.client.plugins.ServerResponseException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -116,17 +118,36 @@ class SearchViewModel(
 }
 
 /**
- * Turns a network failure into something worth reading on screen. The
- * distinction that matters to the user is "you're offline" versus "their
- * server is unhappy" — the former they can fix.
+ * Turns a network failure into something worth reading on screen.
+ *
+ * The distinction that matters is "you're offline" versus "Open Library is
+ * having a moment" — the first is the user's to fix, the second is only worth
+ * waiting out. The earlier catch-all ("Something went wrong") collapsed those
+ * together and made a routine upstream 503 look like a broken app, so the
+ * HTTP status is now named explicitly.
  */
-private fun Throwable.toUserMessage(): String {
-    val name = this::class.simpleName.orEmpty()
-    return when {
-        name.contains("UnknownHost") || name.contains("ConnectException") ->
-            "Can't reach Open Library. Check your connection."
-        name.contains("Timeout") ->
-            "Search timed out. Open Library may be busy — try again."
-        else -> "Something went wrong searching. Try again."
+internal fun Throwable.toUserMessage(): String = when (this) {
+    is ServerResponseException ->
+        "Open Library is having problems right now (error ${response.status.value}). " +
+            "It's usually short-lived — try again in a minute."
+
+    is ClientRequestException ->
+        "Open Library rejected that search (error ${response.status.value})."
+
+    else -> {
+        // Transport-level failures don't share a common Ktor supertype across
+        // engines, so match on the exception name rather than the class.
+        val name = this::class.simpleName.orEmpty()
+        when {
+            name.contains("UnknownHost") ||
+                name.contains("UnresolvedAddress") ||
+                name.contains("ConnectException") ->
+                "Can't reach Open Library. Check your connection."
+
+            name.contains("Timeout") ->
+                "Open Library isn't responding. Try again in a minute."
+
+            else -> "Search failed: ${name.ifBlank { "unknown error" }}. Try again."
+        }
     }
 }
