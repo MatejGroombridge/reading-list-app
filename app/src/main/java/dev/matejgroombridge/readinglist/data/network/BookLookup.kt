@@ -16,9 +16,6 @@ data class BookSuggestion(
     val publishedYear: Int,
     val pageCount: Int,
     val coverUrl: String,
-    /** Open Library community rating; 0 when unrated. */
-    val ratingAverage: Double = 0.0,
-    val ratingCount: Int = 0,
 )
 
 /**
@@ -63,6 +60,51 @@ class BookLookup(private val client: io.ktor.client.HttpClient = HttpClientProvi
         }
     }
 
+    /**
+     * The synopsis for a book the user already has, or null if there's no
+     * confident match or no description. Two requests: a search to find the
+     * work, then the work record, whose description is either a string or
+     * {"type": …, "value": …}.
+     */
+    suspend fun description(title: String, author: String, coverUrl: String = ""): String? = try {
+        // The cover already stored pins the exact work, even when Open
+        // Library files it under its original-language title.
+        val coverId = Regex("""/id/(\d+)-""").find(coverUrl)?.groupValues?.get(1)?.toLongOrNull()
+        val q = listOf(title.substringBefore(':'), author).filter { it.isNotBlank() }.joinToString(" ")
+        val docs = client.get("https://openlibrary.org/search.json") {
+            parameter("q", q)
+            parameter("limit", 8)
+            parameter("fields", "key,title,author_name,cover_i")
+        }.body<KeyResponse>().docs
+        val key = docs.firstOrNull { coverId != null && it.coverId == coverId }?.key ?: docs.firstOrNull { d ->
+            TextMatch.titlesAgree(title, d.title) &&
+                (author.isBlank() || TextMatch.authorsOverlap(author, d.authorName.joinToString(" ")))
+        }?.key
+        if (key == null) null else {
+            val work = client.get("https://openlibrary.org$key.json").body<kotlinx.serialization.json.JsonObject>()
+            when (val d = work["description"]) {
+                is kotlinx.serialization.json.JsonPrimitive -> d.content
+                is kotlinx.serialization.json.JsonObject -> (d["value"] as? kotlinx.serialization.json.JsonPrimitive)?.content
+                else -> null
+            }?.let(::cleanDescription)?.takeIf { it.isNotBlank() }
+        }
+    } catch (e: CancellationException) {
+        throw e
+    } catch (_: Exception) {
+        null
+    }
+
+    @Serializable
+    private data class KeyResponse(val docs: List<KeyDoc> = emptyList())
+
+    @Serializable
+    private data class KeyDoc(
+        val key: String = "",
+        val title: String = "",
+        @SerialName("author_name") val authorName: List<String> = emptyList(),
+        @SerialName("cover_i") val coverId: Long = 0,
+    )
+
     @Serializable
     private data class SearchResponse(val docs: List<Doc> = emptyList())
 
@@ -73,8 +115,6 @@ class BookLookup(private val client: io.ktor.client.HttpClient = HttpClientProvi
         @SerialName("first_publish_year") val firstPublishYear: Int = 0,
         @SerialName("number_of_pages_median") val pages: Int = 0,
         @SerialName("cover_i") val coverId: Long = 0,
-        @SerialName("ratings_average") val ratingsAverage: Double = 0.0,
-        @SerialName("ratings_count") val ratingsCount: Int = 0,
     ) {
         fun toSuggestion() = BookSuggestion(
             title = title,
@@ -82,14 +122,26 @@ class BookLookup(private val client: io.ktor.client.HttpClient = HttpClientProvi
             publishedYear = firstPublishYear,
             pageCount = pages,
             coverUrl = if (coverId > 0) "https://covers.openlibrary.org/b/id/$coverId-M.jpg" else "",
-            ratingAverage = ratingsAverage,
-            ratingCount = ratingsCount,
         )
     }
 
     companion object {
         const val MIN_QUERY_LENGTH = 3
+
+        /**
+         * Open Library descriptions often end in a "----------" block of
+         * "See also" links and use markdown reference links; keep the prose.
+         */
+        fun cleanDescription(raw: String): String = raw
+            .substringBefore("----------")
+            .replace(Regex("""\[([^\]]+)]\[\d+]"""), "$1")
+            .replace(Regex("""\[([^\]]+)]\([^)]*\)"""), "$1")
+            .lines().filterNot { it.trimStart().matches(Regex("""\[\d+]:.*""")) }
+            .joinToString("\n")
+            .replace(Regex("\n{3,}"), "\n\n")
+            .trim()
+
         private const val FIELDS =
-            "title,author_name,first_publish_year,number_of_pages_median,cover_i,ratings_average,ratings_count"
+            "title,author_name,first_publish_year,number_of_pages_median,cover_i"
     }
 }

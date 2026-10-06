@@ -134,15 +134,12 @@ fun BookEditorDialog(
             },
         )
     }
-    var publicRating by remember { mutableStateOf(existing?.publicRating ?: 0.0) }
-    var publicRatingCount by remember { mutableIntStateOf(existing?.publicRatingCount ?: 0) }
     var shelfId by remember { mutableStateOf(existing?.shelfId) }
     var recommendedBy by remember { mutableStateOf(existing?.recommendedBy.orEmpty()) }
     var reason by remember { mutableStateOf(existing?.reason ?: prefill.reason) }
     var coverUrl by remember { mutableStateOf(existing?.coverUrl.orEmpty()) }
     var pageCount by remember { mutableIntStateOf(existing?.pageCount ?: 0) }
     var publishedYear by remember { mutableIntStateOf(existing?.publishedYear ?: 0) }
-    var currentPageText by remember { mutableStateOf(existing?.currentPage?.takeIf { it > 0 }?.toString().orEmpty()) }
     var rating by remember { mutableIntStateOf(existing?.rating ?: 0) }
     var review by remember { mutableStateOf(existing?.review.orEmpty()) }
     var startedOn by remember {
@@ -197,10 +194,6 @@ fun BookEditorDialog(
         if (s.pageCount > 0) pageCount = s.pageCount
         if (s.publishedYear > 0) publishedYear = s.publishedYear
         if (s.coverUrl.isNotBlank()) coverUrl = s.coverUrl
-        if (s.ratingCount > 0) {
-            publicRating = s.ratingAverage
-            publicRatingCount = s.ratingCount
-        }
         lookupArmed = false
         suggestions = emptyList()
     }
@@ -217,19 +210,12 @@ fun BookEditorDialog(
             status = status,
             upNext = interest == Interest.Now && status == ReadingStatus.WantToRead,
             someday = interest == Interest.Someday && status == ReadingStatus.WantToRead,
-            publicRating = publicRating,
-            publicRatingCount = publicRatingCount,
             shelfId = shelfId?.takeIf { id -> library.shelf(id) != null },
             recommendedBy = recommendedBy.trim(),
             reason = reason.trim(),
             coverUrl = coverUrl,
             pageCount = pageCount,
             publishedYear = publishedYear,
-            currentPage = when (status) {
-                ReadingStatus.WantToRead -> 0
-                ReadingStatus.Read -> if (pageCount > 0) pageCount else base.currentPage
-                else -> (currentPageText.toIntOrNull() ?: 0).let { if (pageCount > 0) it.coerceIn(0, pageCount) else it }
-            },
             rating = if (status == ReadingStatus.Read) rating else base.rating,
             review = review.trim(),
             startedOn = if (status == ReadingStatus.WantToRead) null else startedOn,
@@ -415,22 +401,8 @@ fun BookEditorDialog(
                 // --- Status-specific --------------------------------------------
                 when (status) {
                     ReadingStatus.WantToRead -> Unit
-                    ReadingStatus.Reading -> CaptionedSection(caption = "Progress") {
-                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            DateRow("Started", startedOn) { pickingDate = DateField.Started }
-                            if (pageCount > 0) {
-                                OutlinedTextField(
-                                    value = currentPageText,
-                                    onValueChange = { currentPageText = it.filter(Char::isDigit).take(5) },
-                                    label = { Text("Current page of $pageCount") },
-                                    singleLine = true,
-                                    keyboardOptions = KeyboardOptions(
-                                        keyboardType = androidx.compose.ui.text.input.KeyboardType.Number,
-                                    ),
-                                    modifier = Modifier.fillMaxWidth(),
-                                )
-                            }
-                        }
+                    ReadingStatus.Reading -> CaptionedSection(caption = "Reading") {
+                        DateRow("Started", startedOn) { pickingDate = DateField.Started }
                     }
                     ReadingStatus.Read -> CaptionedSection(caption = "Finished") {
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {

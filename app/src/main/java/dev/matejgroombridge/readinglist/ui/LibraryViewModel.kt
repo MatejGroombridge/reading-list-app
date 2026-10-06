@@ -97,16 +97,26 @@ class LibraryViewModel(
         }
     }
 
-    fun setProgress(id: String, page: Int) {
-        viewModelScope.launch { repository.setProgress(id, page) }
-    }
-
     fun setRating(id: String, rating: Int) = updateBook(id) { it.copy(rating = rating.coerceIn(0, 5)) }
 
     fun toggleUpNext(id: String) = updateBook(id) { it.copy(upNext = !it.upNext, someday = false) }
 
     fun setInterest(id: String, level: dev.matejgroombridge.readinglist.data.model.Interest) =
         updateBook(id) { it.withInterest(level) }
+
+    /** Fetches and caches a book's synopsis the first time it's opened. */
+    fun loadDescription(book: Book) {
+        if (book.descriptionChecked || book.kind != ItemKind.Book) return
+        viewModelScope.launch {
+            val text = lookup.description(book.title, book.author, book.coverUrl)
+            // A failed request (offline) leaves it unchecked so it retries later.
+            if (text != null) {
+                repository.updateBook(book.id) { it.copy(description = text, descriptionChecked = true) }
+            } else if (lookup.search(book.title).isNotEmpty()) {
+                repository.updateBook(book.id) { it.copy(descriptionChecked = true) }
+            }
+        }
+    }
 
     fun recordDuel(winnerId: String, loserId: String) {
         viewModelScope.launch { repository.recordDuel(winnerId, loserId) }
@@ -154,11 +164,11 @@ class LibraryViewModel(
     val enrich: StateFlow<EnrichProgress?> = _enrich.asStateFlow()
     private var enrichJob: Job? = null
 
-    /** Books that are missing a cover, page count, year or community rating. */
+    /** Books that are missing a cover, page count or year. */
     fun enrichCandidates(library: Library = uiState.value.library): List<Book> = library.books.filter {
         !it.archived && it.title.isNotBlank() &&
             it.kind == ItemKind.Book &&
-            (it.coverUrl.isBlank() || it.pageCount == 0 || it.publishedYear == 0 || it.publicRatingCount == 0)
+            (it.coverUrl.isBlank() || it.pageCount == 0 || it.publishedYear == 0)
     }
 
     /**
@@ -188,8 +198,6 @@ class LibraryViewModel(
                             coverUrl = b.coverUrl.ifBlank { match.coverUrl },
                             pageCount = if (b.pageCount > 0) b.pageCount else match.pageCount,
                             publishedYear = if (b.publishedYear > 0) b.publishedYear else match.publishedYear,
-                            publicRating = if (b.publicRatingCount > 0) b.publicRating else match.ratingAverage,
-                            publicRatingCount = if (b.publicRatingCount > 0) b.publicRatingCount else match.ratingCount,
                         )
                         changed = next != b
                         next

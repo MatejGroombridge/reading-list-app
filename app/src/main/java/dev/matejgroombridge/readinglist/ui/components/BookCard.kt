@@ -61,7 +61,7 @@ data class QuickAction(
  * where the item is now (the per-cell long-press pattern from agent.md
  * §10.7.14) — so starting or finishing a book never needs the overview.
  *
- * Cards stay minimal: title and author, plus progress on Reading and rating
+ * Cards stay minimal: title and author, plus start date on Reading and rating
  * and date on Read. Who recommended it and why live in the overview.
  */
 @OptIn(ExperimentalFoundationApi::class)
@@ -185,25 +185,7 @@ fun BookCard(
 
 @Composable
 private fun ReadingMeta(book: Book, todayEpochDay: Long, content: Color, accent: Color) {
-    val progress = book.progress
-    if (progress != null) {
-        Spacer(Modifier.height(8.dp))
-        LinearProgressIndicator(
-            progress = { progress },
-            color = content.copy(alpha = 0.75f),
-            trackColor = accent.copy(alpha = 0.45f),
-            strokeCap = StrokeCap.Round,
-            drawStopIndicator = {},
-            gapSize = 0.dp,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(6.dp),
-        )
-        Spacer(Modifier.height(4.dp))
-        MetaText("p. ${book.currentPage} of ${book.pageCount} · ${(progress * 100).toInt()}%", content)
-    } else {
         book.startedOn?.let { MetaText("Started ${Dates.relativeDays(it, todayEpochDay)}", content) }
-    }
 }
 
 @Composable

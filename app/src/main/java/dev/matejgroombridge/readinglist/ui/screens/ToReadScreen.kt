@@ -58,7 +58,7 @@ import dev.matejgroombridge.readinglist.ui.util.rememberHaptics
 /**
  * The landing page and the replacement for the Notion list itself:
  * everything waiting to be read (Up Next items live on the Reading tab),
- * single-select genre/type filter chips, and a sort/group menu.
+ * and one header menu to filter by genre/type, group and sort.
  */
 @Composable
 fun ToReadScreen(
@@ -94,6 +94,24 @@ fun ToReadScreen(
             subtitle = if (state.loaded && toRead.isNotEmpty()) countLabel(toRead.size) else null,
         ) {
             IconButton(onClick = onOpenSearch) { Icon(Icons.Outlined.Search, contentDescription = "Search") }
+            SortMenuButton(
+                filters = filters,
+                filterKey = filterKey,
+                groupBy = settings.groupBy,
+                sortOrder = settings.sortOrder,
+                onFilter = {
+                    haptics.light()
+                    filterKey = it
+                },
+                onGroupBy = {
+                    haptics.light()
+                    onGroupBy(it)
+                },
+                onSortOrder = {
+                    haptics.light()
+                    onSortOrder(it)
+                },
+            )
             IconButton(onClick = onOpenDuel, enabled = toRead.size >= 2) {
                 Icon(Icons.Outlined.Balance, contentDescription = "This or that")
             }
@@ -106,48 +124,6 @@ fun ToReadScreen(
         if (state.loaded && toRead.isEmpty()) {
             EmptyState("Nothing on your list yet.\nTap + to add something someone recommended.")
             return@Column
-        }
-
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            SortMenuButton(
-                groupBy = settings.groupBy,
-                sortOrder = settings.sortOrder,
-                onGroupBy = {
-                    haptics.light()
-                    onGroupBy(it)
-                },
-                onSortOrder = {
-                    haptics.light()
-                    onSortOrder(it)
-                },
-            )
-            LazyRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                contentPadding = PaddingValues(end = 20.dp),
-                modifier = Modifier.weight(1f),
-            ) {
-                items(filters, key = { it.key }) { option ->
-                    FilterChip(
-                        selected = option.key == filterKey,
-                        onClick = {
-                            haptics.light()
-                            filterKey = if (option.key == filterKey) "all" else option.key
-                        },
-                        label = { Text("${option.label}  ${option.count}") },
-                        leadingIcon = option.dotColorKey?.let { key ->
-                            {
-                                Box(
-                                    Modifier
-                                        .size(10.dp)
-                                        .clip(CircleShape)
-                                        .background(ShelfColors.entry(key).accent),
-                                )
-                            }
-                        },
-                        colors = FilterChipDefaults.filterChipColors(),
-                    )
-                }
-            }
         }
 
         if (sections.isEmpty()) {
@@ -195,7 +171,7 @@ private data class FilterOption(
     val dotColorKey: String? = null,
 )
 
-/** Only offer chips that would show something, so the row stays short. */
+/** Only offer filters that would show something, so the menu stays short. */
 private fun availableFilters(state: LibraryUiState): List<FilterOption> {
     val books = state.toRead
     return buildList {
@@ -213,17 +189,33 @@ private fun availableFilters(state: LibraryUiState): List<FilterOption> {
 
 @Composable
 private fun SortMenuButton(
+    filters: List<FilterOption>,
+    filterKey: String,
     groupBy: GroupBy,
     sortOrder: SortOrder,
+    onFilter: (String) -> Unit,
     onGroupBy: (GroupBy) -> Unit,
     onSortOrder: (SortOrder) -> Unit,
 ) {
     var open by remember { mutableStateOf(false) }
-    Box(modifier = Modifier.padding(start = 8.dp)) {
+    Box {
         IconButton(onClick = { open = true }) {
-            Icon(Icons.AutoMirrored.Outlined.Sort, contentDescription = "Sort and group")
+            Icon(
+                imageVector = Icons.AutoMirrored.Outlined.Sort,
+                contentDescription = "Filter, group and sort",
+                // Tinted while a filter is on, since there's no chip row to show it.
+                tint = if (filterKey != "all") MaterialTheme.colorScheme.primary else androidx.compose.material3.LocalContentColor.current,
+            )
         }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            MenuCaption("Show")
+            filters.forEach { option ->
+                CheckItem("${option.label}  ·  ${option.count}", option.key == filterKey) {
+                    onFilter(option.key)
+                    open = false
+                }
+            }
+            HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
             MenuCaption("Group By")
             GroupBy.entries.forEach { option ->
                 CheckItem(option.label, option == groupBy) {

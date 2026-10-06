@@ -28,6 +28,9 @@ import androidx.compose.material.icons.outlined.EventAvailable
 import androidx.compose.material.icons.outlined.FormatQuote
 import androidx.compose.material.icons.outlined.StarOutline
 import androidx.compose.material.icons.outlined.TaskAlt
+import androidx.compose.material.icons.outlined.TravelExplore
+import androidx.compose.ui.platform.LocalUriHandler
+import android.net.Uri
 import androidx.compose.material.icons.outlined.Timer
 import androidx.compose.material3.AlertDialogDefaults
 import androidx.compose.material3.BasicAlertDialog
@@ -42,6 +45,10 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -69,7 +76,6 @@ class OverviewActions(
     val onFinish: () -> Unit,
     val onAbandon: () -> Unit,
     val onBackToList: () -> Unit,
-    val onSetProgress: (Int) -> Unit,
     val onSetRating: (Int) -> Unit,
     /** Non-null when the dialog was opened by Pick for Me. */
     val onPickAgain: (() -> Unit)? = null,
@@ -126,6 +132,16 @@ fun BookOverviewDialog(
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
+                    // Web search for the book — handy when the title alone no
+                    // longer says what it's about.
+                    val uriHandler = LocalUriHandler.current
+                    IconButton(onClick = {
+                        val query = listOf(book.title, book.author).filter { it.isNotBlank() }.joinToString(" ")
+                        runCatching { uriHandler.openUri("https://www.google.com/search?q=" + Uri.encode(query)) }
+                    }) {
+                        Icon(Icons.Outlined.TravelExplore, contentDescription = "Look up online",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                     if (book.status == ReadingStatus.WantToRead) {
                         IconButton(onClick = actions.onStartReading) {
                             Icon(Icons.AutoMirrored.Outlined.MenuBook, contentDescription = "Start reading",
@@ -178,9 +194,6 @@ fun BookOverviewDialog(
                 val facts = listOfNotNull(
                     book.publishedYear.takeIf { it > 0 }?.toString(),
                     book.pageCount.takeIf { it > 0 }?.let { "$it pages" },
-                    book.publicRating.takeIf { book.publicRatingCount > 0 && it > 0 }?.let {
-                        "★ %.1f (%s ratings)".format(it, compactCount(book.publicRatingCount))
-                    },
                 ).joinToString(" · ")
                 if (facts.isNotEmpty()) {
                     Spacer(Modifier.height(10.dp))
@@ -190,6 +203,11 @@ fun BookOverviewDialog(
                 if (book.hasRecommendation) {
                     Spacer(Modifier.height(14.dp))
                     RecommendationQuote(book = book, accent = accent)
+                }
+
+                if (book.description.isNotBlank()) {
+                    Spacer(Modifier.height(14.dp))
+                    AboutText(book.description)
                 }
 
                 Spacer(Modifier.height(16.dp))
@@ -243,6 +261,41 @@ private fun RecommendationQuote(book: Book, accent: Color) {
     }
 }
 
+/** The Open Library synopsis, clamped to a few lines until tapped. */
+@Composable
+private fun AboutText(text: String) {
+    var expanded by remember(text) { mutableStateOf(false) }
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .clickable { expanded = !expanded },
+    ) {
+        Text(
+            text = "ABOUT",
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.primary,
+            fontWeight = FontWeight.SemiBold,
+        )
+        Spacer(Modifier.height(4.dp))
+        Text(
+            text = text,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = if (expanded) Int.MAX_VALUE else 5,
+            overflow = TextOverflow.Ellipsis,
+        )
+        if (!expanded && text.length > 260) {
+            Text(
+                text = "More",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(top = 2.dp),
+            )
+        }
+    }
+}
+
 /** How keen you are on it — "Now" puts it on the Reading tab's Up Next. */
 @Composable
 private fun InterestPicker(current: Interest, actions: OverviewActions) {
@@ -255,11 +308,6 @@ private fun InterestPicker(current: Interest, actions: OverviewActions) {
     )
 }
 
-private fun compactCount(n: Int): String = when {
-    n >= 1000 -> "%.1fk".format(n / 1000.0).replace(".0k", "k")
-    else -> n.toString()
-}
-
 @Composable
 private fun ReadingSection(book: Book, todayEpochDay: Long, accent: Color, actions: OverviewActions) {
     Surface(
@@ -268,33 +316,7 @@ private fun ReadingSection(book: Book, todayEpochDay: Long, accent: Color, actio
         modifier = Modifier.fillMaxWidth(),
     ) {
         Column(modifier = Modifier.padding(14.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            val progress = book.progress
-            if (progress != null) {
-                LinearProgressIndicator(
-                    progress = { progress },
-                    color = accent,
-                    trackColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-                    strokeCap = StrokeCap.Round,
-                    gapSize = 0.dp,
-                    drawStopIndicator = {},
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(8.dp),
-                )
-                Spacer(Modifier.height(12.dp))
-                // ±10 pages: the "minimum 10 pages a day" habit from the
-                // Notion page, as one tap.
-                CompactStepper(
-                    value = book.currentPage,
-                    onChange = actions.onSetProgress,
-                    label = { "p. $it of ${book.pageCount}" },
-                    min = 0,
-                    max = book.pageCount,
-                    step = 10,
-                )
-            }
             book.startedOn?.let {
-                if (progress != null) Spacer(Modifier.height(8.dp))
                 Text(
                     text = "Started ${Dates.relativeDays(it, todayEpochDay)}",
                     style = MaterialTheme.typography.bodySmall,
@@ -352,7 +374,7 @@ private fun ReadSection(book: Book, accent: Color, actions: OverviewActions) {
 private fun AbandonedSection(book: Book, actions: OverviewActions) {
     book.finishedOn?.let {
         Text(
-            text = "Stopped ${Dates.full(it)}" + if (book.progress != null) " on page ${book.currentPage}" else "",
+            text = "Stopped ${Dates.full(it)}",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

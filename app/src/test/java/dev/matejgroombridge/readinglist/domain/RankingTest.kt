@@ -38,13 +38,6 @@ class RankingTest {
     }
 
     @Test
-    fun `community rating counts more with more ratings`() {
-        val few = Ranking.score(Book(title = "a", addedAt = now, publicRating = 4.5, publicRatingCount = 3), now)
-        val many = Ranking.score(Book(title = "b", addedAt = now, publicRating = 4.5, publicRatingCount = 5000), now)
-        assertTrue(many > few)
-    }
-
-    @Test
     fun `someday sits below otherwise identical books`() {
         val a = Book(title = "a", addedAt = now)
         assertTrue(Ranking.score(a, now) > Ranking.score(a.copy(someday = true), now))

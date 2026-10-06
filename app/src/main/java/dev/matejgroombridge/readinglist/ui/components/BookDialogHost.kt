@@ -14,6 +14,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import dev.matejgroombridge.readinglist.data.model.Book
 import dev.matejgroombridge.readinglist.data.model.BookPrefill
@@ -29,14 +30,13 @@ sealed interface BookDialog {
     data class Create(val prefill: BookPrefill) : BookDialog
     data class Overview(val bookId: String, val picked: Boolean = false) : BookDialog
     data class Edit(val bookId: String) : BookDialog
-    data class Finish(val bookId: String) : BookDialog
     data class ConfirmStart(val bookId: String) : BookDialog
 }
 
 /**
  * The status moves every surface offers — overview buttons, long-press
  * menus, the Pick for Me dialog — routed through one place so the rules
- * (current-reads limit, finish dialog, archive undo) can't drift apart
+ * (current-reads limit, finishing, archive undo) can't drift apart
  * between screens.
  */
 class BookActions(
@@ -46,6 +46,7 @@ class BookActions(
     private val haptics: Haptics,
     val open: (BookDialog?) -> Unit,
     private val onArchived: (Book) -> Unit,
+    private val onFinished: () -> Unit,
 ) {
     fun overview(book: Book) = open(BookDialog.Overview(book.id))
 
@@ -63,7 +64,12 @@ class BookActions(
         viewModel.setStatus(book.id, ReadingStatus.Reading)
     }
 
-    fun finish(book: Book) = open(BookDialog.Finish(book.id))
+    /** Marks it read today, straight away — no rating prompt — and celebrates. */
+    fun finish(book: Book) {
+        haptics.completion()
+        viewModel.setStatus(book.id, ReadingStatus.Read)
+        onFinished()
+    }
 
     fun abandon(book: Book) {
         haptics.light()
@@ -140,7 +146,6 @@ fun BookDialogHost(
     viewModel: LibraryViewModel,
     actions: BookActions,
     haptics: Haptics,
-    onCelebrate: () -> Unit,
 ) {
     val close = { actions.open(null) }
     when (dialog) {
@@ -196,16 +201,13 @@ fun BookDialogHost(
                     onFinish = { actions.finish(book) },
                     onAbandon = { actions.abandon(book) },
                     onBackToList = { actions.backToList(book) },
-                    onSetProgress = { page ->
-                        haptics.light()
-                        viewModel.setProgress(book.id, page)
-                    },
                     onSetRating = { rating ->
                         haptics.light()
                         viewModel.setRating(book.id, rating)
                     },
                     onPickAgain = if (dialog.picked) ({ actions.pickForMe(excludeId = book.id) }) else null,
                 )
+            LaunchedEffect(book.id) { if (settings.onlineLookup) viewModel.loadDescription(book) }
             BookOverviewDialog(
                 book = book,
                 shelf = state.library.shelf(book.shelfId),
@@ -213,20 +215,6 @@ fun BookDialogHost(
                 todayEpochDay = state.todayEpochDay,
                 onDismiss = close,
                 actions = overviewActions,
-            )
-        }
-
-        is BookDialog.Finish -> {
-            val book = state.book(dialog.bookId) ?: return CloseNow(close)
-            FinishBookDialog(
-                book = book,
-                onDismiss = close,
-                onConfirm = { finishedOn, rating, review ->
-                    haptics.completion()
-                    viewModel.finish(book.id, finishedOn, rating, review)
-                    onCelebrate()
-                    close()
-                },
             )
         }
 

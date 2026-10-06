@@ -42,8 +42,7 @@ class ReminderReceiver : BroadcastReceiver() {
         val body = when {
             reading.size == 1 -> {
                 val b = reading.first()
-                val where = if (b.pageCount > 0 && b.currentPage > 0) " — you're on page ${b.currentPage}" else ""
-                "Pick up ${b.title}$where."
+                "Pick up ${b.title}."
             }
             reading.size > 1 -> "You have ${reading.size} books on the go: " +
                 reading.take(3).joinToString(", ") { it.title } + if (reading.size > 3) "…" else "."

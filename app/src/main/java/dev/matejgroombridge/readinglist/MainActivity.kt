@@ -213,6 +213,15 @@ private fun AppShell(
                     if (result == SnackbarResult.ActionPerformed) libraryViewModel.setArchived(book.id, false)
                 }
             },
+            onFinished = {
+                // Flip through false so a second finish in a row still
+                // re-triggers the overlay.
+                scope.launch {
+                    confetti = false
+                    withFrameNanos { }
+                    confetti = true
+                }
+            },
         )
     }
 
@@ -308,15 +317,6 @@ private fun AppShell(
             viewModel = libraryViewModel,
             actions = actions,
             haptics = haptics,
-            onCelebrate = {
-                // Flip through false so a second finish in a row still
-                // re-triggers the overlay.
-                scope.launch {
-                    confetti = false
-                    withFrameNanos { }
-                    confetti = true
-                }
-            },
         )
         ConfettiOverlay(trigger = confetti)
     }

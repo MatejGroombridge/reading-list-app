@@ -200,7 +200,6 @@ private fun DuelCard(
                 }
                 val meta = listOfNotNull(
                     book.recommendedBy.takeIf { it.isNotBlank() }?.let { "From $it" },
-                    book.publicRating.takeIf { book.publicRatingCount > 0 && it > 0 }?.let { "★ %.1f".format(it) },
                 ).joinToString(" · ")
                 if (meta.isNotEmpty()) {
                     Text(meta, style = MaterialTheme.typography.labelMedium, color = content.copy(alpha = 0.7f))

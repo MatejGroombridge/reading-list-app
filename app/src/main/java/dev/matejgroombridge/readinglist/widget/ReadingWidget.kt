@@ -133,8 +133,7 @@ private fun WidgetBody(context: Context, library: Library, reading: List<Book>, 
 @Composable
 private fun BookRow(context: Context, book: Book, library: Library) {
     val palette = ShelfColors.entry(library.shelf(book.shelfId)?.colorKey)
-    val subtitle = book.progress?.let { "p. ${book.currentPage} of ${book.pageCount} · ${(it * 100).toInt()}%" }
-        ?: book.author
+    val subtitle = book.author
     Column(
         modifier = GlanceModifier
             .fillMaxWidth()

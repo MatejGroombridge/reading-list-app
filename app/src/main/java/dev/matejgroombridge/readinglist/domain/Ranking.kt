@@ -4,7 +4,6 @@ import dev.matejgroombridge.readinglist.data.model.Book
 import dev.matejgroombridge.readinglist.data.model.ItemKind
 import dev.matejgroombridge.readinglist.data.model.Library
 import dev.matejgroombridge.readinglist.data.model.ReadingStatus
-import kotlin.math.ln
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.pow
@@ -12,13 +11,11 @@ import kotlin.random.Random
 
 /**
  * Orders the To Read list by how much you probably want to read each item.
- * Four signals, each worth a bounded number of points so no single one can
+ * Three signals, each worth a bounded number of points so no single one can
  * swamp the rest:
  *
  *  - **Duels** (±~40): your own "this or that" picks, as an Elo rating. The
  *    strongest signal once a book has a few duels behind it.
- *  - **Community rating** (±~15): Open Library's average, trusted in
- *    proportion to how many people rated it — 4.4 from 3 people says little.
  *  - **Freshness** (+15 → 0 over [FRESH_DAYS]): something you just added is
  *    something you're excited about right now.
  *  - **Staleness** (0 → −[MAX_AGE_PENALTY] over years): books that have sat
@@ -43,19 +40,13 @@ object Ranking {
     fun score(book: Book, nowMillis: Long): Double {
         val duel = (book.duelRating - Book.DEFAULT_DUEL_RATING) / 10.0
 
-        // Shrink the community rating toward neutral (3.75) when few people
-        // rated it: full weight from ~200 ratings up.
-        val community = if (book.publicRatingCount > 0 && book.publicRating > 0) {
-            val trust = min(1.0, ln(1.0 + book.publicRatingCount) / ln(201.0))
-            (book.publicRating - 3.75) * 20.0 * trust
-        } else 0.0
 
         val ageDays = if (book.addedAt > 0) max(0.0, (nowMillis - book.addedAt) / DAY_MS) else UNKNOWN_AGE_YEARS * 365
         val freshness = if (ageDays < FRESH_DAYS) FRESH_BONUS * (1 - ageDays / FRESH_DAYS) else 0.0
         val staleness = -min(MAX_AGE_PENALTY, ageDays / 365.0 * AGE_PENALTY_PER_YEAR)
 
         val someday = if (book.someday) -SOMEDAY_PENALTY else 0.0
-        return duel + community + freshness + staleness + someday
+        return duel + freshness + staleness + someday
     }
 
     /** [books] best-first; ties keep their incoming order. */

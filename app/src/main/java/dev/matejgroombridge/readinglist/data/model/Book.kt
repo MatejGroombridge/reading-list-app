@@ -60,7 +60,9 @@ enum class ItemKind(val label: String, val plural: String) {
  * @param someday       Interest "Maybe someday": ranks lower on To Read.
  * @param duelRating    Elo-style rating from "This or That" duels; 1000 = untested.
  * @param duels         How many duels the item has been in.
- * @param publicRating  Open Library community average (0 = unknown).
+ * @param description   Open Library synopsis, fetched once when first opened.
+ * @param descriptionChecked True once a fetch has been tried, so books with no
+ *                      synopsis don't re-query every time.
  * @param rating        0 = unrated, otherwise 1..5.
  * @param review        Takeaways written when finishing.
  */
@@ -82,8 +84,8 @@ data class Book(
     val someday: Boolean = false,
     val duelRating: Double = DEFAULT_DUEL_RATING,
     val duels: Int = 0,
-    val publicRating: Double = 0.0,
-    val publicRatingCount: Int = 0,
+    val description: String = "",
+    val descriptionChecked: Boolean = false,
     val rating: Int = 0,
     val review: String = "",
     val addedAt: Long = 0L,
