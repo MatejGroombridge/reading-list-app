@@ -15,8 +15,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Star
-import androidx.compose.material.icons.outlined.Download
-import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -36,7 +34,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -64,9 +61,8 @@ data class QuickAction(
  * where the item is now (the per-cell long-press pattern from agent.md
  * §10.7.14) — so starting or finishing a book never needs the overview.
  *
- * What sits under the title depends on status: the recommendation on To
- * Read (that's what you decide on), progress on Reading, rating and date on
- * Read.
+ * Cards stay minimal: title and author, plus progress on Reading and rating
+ * and date on Read. Who recommended it and why live in the overview.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -137,7 +133,7 @@ fun BookCard(
                         )
                     }
                     when (book.status) {
-                        ReadingStatus.WantToRead -> ToReadMeta(book, content)
+                        ReadingStatus.WantToRead -> Unit
                         ReadingStatus.Reading -> ReadingMeta(book, todayEpochDay, content, palette.accent)
                         ReadingStatus.Read -> ReadMeta(book, content)
                         ReadingStatus.Abandoned -> book.finishedOn?.let {
@@ -183,33 +179,6 @@ fun BookCard(
                     },
                 )
             }
-        }
-    }
-}
-
-@Composable
-private fun ToReadMeta(book: Book, content: Color) {
-    if (book.reason.isNotBlank()) {
-        Text(
-            text = "“${book.reason}”",
-            style = MaterialTheme.typography.bodySmall,
-            fontStyle = FontStyle.Italic,
-            color = content.copy(alpha = 0.7f),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(top = 2.dp),
-        )
-    }
-    if (book.recommendedBy.isNotBlank() || book.toAcquire) {
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(top = 4.dp),
-        ) {
-            if (book.recommendedBy.isNotBlank()) {
-                IconText(Icons.Outlined.Person, book.recommendedBy, content, Modifier.weight(1f, fill = false))
-            }
-            if (book.toAcquire) IconText(Icons.Outlined.Download, "To get", content)
         }
     }
 }
@@ -268,20 +237,3 @@ private fun MetaText(text: String, content: Color) {
     )
 }
 
-@Composable
-private fun IconText(icon: ImageVector, text: String, content: Color, modifier: Modifier = Modifier) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
-        modifier = modifier,
-    ) {
-        Icon(icon, contentDescription = null, tint = content.copy(alpha = 0.7f), modifier = Modifier.size(14.dp))
-        Text(
-            text = text,
-            style = MaterialTheme.typography.bodySmall,
-            color = content.copy(alpha = 0.75f),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-    }
-}

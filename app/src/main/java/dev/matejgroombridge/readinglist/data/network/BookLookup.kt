@@ -16,6 +16,9 @@ data class BookSuggestion(
     val publishedYear: Int,
     val pageCount: Int,
     val coverUrl: String,
+    /** Open Library community rating; 0 when unrated. */
+    val ratingAverage: Double = 0.0,
+    val ratingCount: Int = 0,
 )
 
 /**
@@ -70,6 +73,8 @@ class BookLookup(private val client: io.ktor.client.HttpClient = HttpClientProvi
         @SerialName("first_publish_year") val firstPublishYear: Int = 0,
         @SerialName("number_of_pages_median") val pages: Int = 0,
         @SerialName("cover_i") val coverId: Long = 0,
+        @SerialName("ratings_average") val ratingsAverage: Double = 0.0,
+        @SerialName("ratings_count") val ratingsCount: Int = 0,
     ) {
         fun toSuggestion() = BookSuggestion(
             title = title,
@@ -77,11 +82,14 @@ class BookLookup(private val client: io.ktor.client.HttpClient = HttpClientProvi
             publishedYear = firstPublishYear,
             pageCount = pages,
             coverUrl = if (coverId > 0) "https://covers.openlibrary.org/b/id/$coverId-M.jpg" else "",
+            ratingAverage = ratingsAverage,
+            ratingCount = ratingsCount,
         )
     }
 
     companion object {
         const val MIN_QUERY_LENGTH = 3
-        private const val FIELDS = "title,author_name,first_publish_year,number_of_pages_median,cover_i"
+        private const val FIELDS =
+            "title,author_name,first_publish_year,number_of_pages_median,cover_i,ratings_average,ratings_count"
     }
 }

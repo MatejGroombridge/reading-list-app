@@ -16,28 +16,25 @@ enum class ReadingStatus(val label: String) {
 }
 
 /**
- * Not everything on a reading list is a single book. The Notion page this
- * app replaces had authors to explore ("all robert greene books"), topics
- * ("choose one 1800s tycoon to study"), articles and other people's lists.
- * Giving them a kind keeps them on the same list without pretending they're
- * books.
+ * How keen you are on a To Read item. [Now] is the old Up Next star: those
+ * items sit on the Reading tab. Stored as two booleans on [Book] ([Book.upNext],
+ * [Book.someday]) so older exports keep their Up Next flags.
+ */
+enum class Interest(val label: String) {
+    Now("Now"),
+    Interested("Interested"),
+    Someday("Someday"),
+}
+
+/**
+ * A book, or an author to explore ("all robert greene books"). Older exports
+ * may contain kinds that have since been removed (series, topics, articles,
+ * lists); the decoder coerces those to [Book].
  */
 @Serializable
 enum class ItemKind(val label: String, val plural: String) {
     Book("Book", "Books"),
-    Series("Series", "Series"),
     Author("Author", "Authors"),
-    Topic("Topic", "Topics"),
-    Article("Article", "Articles"),
-    List("Reading List", "Reading Lists"),
-}
-
-@Serializable
-enum class BookFormat(val label: String) {
-    Any("Any"),
-    Print("Print"),
-    Ebook("Ebook"),
-    Audio("Audio"),
 }
 
 /**
@@ -46,20 +43,24 @@ enum class BookFormat(val label: String) {
  * Schema notes (same contract as the rest of the app family):
  *  - The repository decodes with `ignoreUnknownKeys = true` and every field
  *    except [title] has a default, so older exports keep loading as fields
- *    are added.
+ *    are added or removed.
  *  - Dates the user thinks about as days ([startedOn], [finishedOn]) are
  *    `LocalDate.toEpochDay()` values. [addedAt] is epoch millis so items
  *    added on the same day still sort by insertion.
  *
+ * @param shelfId       The item's genre (stored as a "shelf" for compatibility).
  * @param recommendedBy Who or what suggested it ("Angela", "Modern Wisdom").
  * @param reason        Why it was recommended — the context that's easy to
  *                      forget and the main thing this app exists to keep.
- * @param notes         Anything else: edition tips, reading advice, spoilers
- *                      to avoid.
- * @param addedAt       Epoch millis, or 0 when unknown (e.g. imported items
- *                      whose original date was never written down).
- * @param upNext        Pinned to the top of To Read.
- * @param toAcquire     "Need a copy" — still has to be bought or downloaded.
+ * @param coverUrl      Filled from Open Library; never typed.
+ * @param pageCount     Filled from Open Library; enables page progress.
+ * @param addedAt       Epoch millis, or 0 when unknown (imported items whose
+ *                      original date was never written down).
+ * @param upNext        Interest "Now": queued to read next, shown on the Reading tab.
+ * @param someday       Interest "Maybe someday": ranks lower on To Read.
+ * @param duelRating    Elo-style rating from "This or That" duels; 1000 = untested.
+ * @param duels         How many duels the item has been in.
+ * @param publicRating  Open Library community average (0 = unknown).
  * @param rating        0 = unrated, otherwise 1..5.
  * @param review        Takeaways written when finishing.
  */
@@ -73,15 +74,16 @@ data class Book(
     val shelfId: String? = null,
     val recommendedBy: String = "",
     val reason: String = "",
-    val notes: String = "",
-    val url: String = "",
     val coverUrl: String = "",
     val pageCount: Int = 0,
     val currentPage: Int = 0,
     val publishedYear: Int = 0,
-    val format: BookFormat = BookFormat.Any,
     val upNext: Boolean = false,
-    val toAcquire: Boolean = false,
+    val someday: Boolean = false,
+    val duelRating: Double = DEFAULT_DUEL_RATING,
+    val duels: Int = 0,
+    val publicRating: Double = 0.0,
+    val publicRatingCount: Int = 0,
     val rating: Int = 0,
     val review: String = "",
     val addedAt: Long = 0L,
@@ -94,6 +96,20 @@ data class Book(
         get() = if (pageCount > 0) (currentPage.toFloat() / pageCount).coerceIn(0f, 1f) else null
 
     val hasRecommendation: Boolean get() = recommendedBy.isNotBlank() || reason.isNotBlank()
+
+    val interest: Interest
+        get() = when {
+            upNext -> Interest.Now
+            someday -> Interest.Someday
+            else -> Interest.Interested
+        }
+
+    fun withInterest(level: Interest): Book =
+        copy(upNext = level == Interest.Now, someday = level == Interest.Someday)
+
+    companion object {
+        const val DEFAULT_DUEL_RATING = 1000.0
+    }
 
     /**
      * Returns a copy moved to [newStatus] with the date bookkeeping that goes
@@ -121,7 +137,6 @@ data class Book(
             finishedOn = finishedOn ?: today,
             currentPage = if (pageCount > 0) pageCount else currentPage,
             upNext = false,
-            toAcquire = false,
         )
         ReadingStatus.Abandoned -> copy(
             status = newStatus,
@@ -132,13 +147,14 @@ data class Book(
 }
 
 /**
- * Initial values for a new item — from a share intent, an online lookup
- * pick, or the FAB on a particular tab.
+ * Initial values for a new item — from a share intent, a search query, or
+ * the FAB on a particular tab.
  */
 data class BookPrefill(
     val title: String = "",
     val author: String = "",
-    val url: String = "",
     val reason: String = "",
     val status: ReadingStatus = ReadingStatus.WantToRead,
+    val upNext: Boolean = false,
+    val someday: Boolean = false,
 )

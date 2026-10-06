@@ -227,7 +227,7 @@ private fun ShelfBreakdown(stats: ReadingStats) {
     ) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(
-                text = "BY SHELF",
+                text = "BY GENRE",
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.primary,
                 fontWeight = FontWeight.SemiBold,

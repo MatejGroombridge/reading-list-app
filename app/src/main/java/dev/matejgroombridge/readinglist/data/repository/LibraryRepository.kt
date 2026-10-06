@@ -75,6 +75,24 @@ class LibraryRepository(private val context: Context) {
         }
     }
 
+    /** Applies one duel result to both books in a single write. */
+    suspend fun recordDuel(winnerId: String, loserId: String) {
+        update { lib ->
+            val w = lib.books.firstOrNull { it.id == winnerId } ?: return@update lib
+            val l = lib.books.firstOrNull { it.id == loserId } ?: return@update lib
+            val (nw, nl) = dev.matejgroombridge.readinglist.domain.Ranking.afterDuel(w.duelRating, l.duelRating)
+            lib.copy(
+                books = lib.books.map {
+                    when (it.id) {
+                        winnerId -> it.copy(duelRating = nw, duels = it.duels + 1)
+                        loserId -> it.copy(duelRating = nl, duels = it.duels + 1)
+                        else -> it
+                    }
+                },
+            )
+        }
+    }
+
     suspend fun deleteBook(id: String) {
         update { lib -> lib.copy(books = lib.books.filterNot { it.id == id }) }
     }

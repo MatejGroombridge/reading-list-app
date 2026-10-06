@@ -17,6 +17,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Sort
+import androidx.compose.material.icons.outlined.Balance
 import androidx.compose.material.icons.outlined.Casino
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Search
@@ -56,9 +57,8 @@ import dev.matejgroombridge.readinglist.ui.util.rememberHaptics
 
 /**
  * The landing page and the replacement for the Notion list itself:
- * everything waiting to be read, with Up Next pinned on top, single-select
- * filter chips, and a sort/group menu that can recreate the page's old
- * "from angela:" style sections on demand.
+ * everything waiting to be read (Up Next items live on the Reading tab),
+ * single-select genre/type filter chips, and a sort/group menu.
  */
 @Composable
 fun ToReadScreen(
@@ -69,6 +69,7 @@ fun ToReadScreen(
     onGroupBy: (GroupBy) -> Unit,
     onSortOrder: (SortOrder) -> Unit,
     onOpenSearch: () -> Unit,
+    onOpenDuel: () -> Unit,
     onOpenSettings: () -> Unit,
 ) {
     val haptics = rememberHaptics()
@@ -93,6 +94,9 @@ fun ToReadScreen(
             subtitle = if (state.loaded && toRead.isNotEmpty()) countLabel(toRead.size) else null,
         ) {
             IconButton(onClick = onOpenSearch) { Icon(Icons.Outlined.Search, contentDescription = "Search") }
+            IconButton(onClick = onOpenDuel, enabled = toRead.size >= 2) {
+                Icon(Icons.Outlined.Balance, contentDescription = "This or that")
+            }
             IconButton(onClick = { actions.pickForMe() }, enabled = toRead.isNotEmpty()) {
                 Icon(Icons.Outlined.Casino, contentDescription = "Pick for me")
             }
@@ -196,8 +200,6 @@ private fun availableFilters(state: LibraryUiState): List<FilterOption> {
     val books = state.toRead
     return buildList {
         add(FilterOption("all", "All", books.size, ListFilter.All))
-        books.count { it.upNext }.takeIf { it > 0 }?.let { add(FilterOption("up_next", "Up Next", it, ListFilter.UpNext)) }
-        books.count { it.toAcquire }.takeIf { it > 0 }?.let { add(FilterOption("to_get", "To Get", it, ListFilter.ToGet)) }
         state.library.shelves.forEach { shelf ->
             val n = books.count { it.shelfId == shelf.id }
             if (n > 0) add(FilterOption("shelf_${shelf.id}", shelf.name, n, ListFilter.OnShelf(shelf.id), shelf.colorKey))

@@ -31,14 +31,12 @@ class SharedTextParserTest {
         val p = SharedTextParser.parse("Check out Dune by Frank Herbert on Goodreads: https://www.goodreads.com/book/show/44767458-dune")
         assertEquals("Dune", p.title)
         assertEquals("Frank Herbert", p.author)
-        assertEquals("https://www.goodreads.com/book/show/44767458-dune", p.url)
     }
 
     @Test
     fun `bare goodreads link guesses title from the slug`() {
         val p = SharedTextParser.parse("https://www.goodreads.com/book/show/44767458-dune")
         assertEquals("dune", p.title)
-        assertEquals("https://www.goodreads.com/book/show/44767458-dune", p.url)
     }
 
     @Test

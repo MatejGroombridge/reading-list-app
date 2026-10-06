@@ -15,15 +15,11 @@ import kotlin.random.Random
 /** One filter chip on the To Read page. Single-select, so it's a sealed set. */
 sealed interface ListFilter {
     data object All : ListFilter
-    data object UpNext : ListFilter
-    data object ToGet : ListFilter
     data class OnShelf(val shelfId: String) : ListFilter
     data class OfKind(val kind: ItemKind) : ListFilter
 
     fun accepts(book: Book): Boolean = when (this) {
         All -> true
-        UpNext -> book.upNext
-        ToGet -> book.toAcquire
         is OnShelf -> book.shelfId == shelfId
         is OfKind -> book.kind == kind
     }
@@ -48,6 +44,7 @@ object LibraryQueries {
         val index = library.books.withIndex().associate { it.value.id to it.index }
         val byRecency = compareBy<Book>({ it.addedAt }, { index[it.id] ?: 0 })
         return when (order) {
+            SortOrder.Ranked -> Ranking.rank(LibraryQueries.sort(books, SortOrder.Recent, library))
             SortOrder.Recent -> books.sortedWith(byRecency.reversed())
             SortOrder.Oldest -> books.sortedWith(byRecency)
             SortOrder.Title -> books.sortedBy { TextMatch.titleKey(it.title) }
@@ -57,38 +54,18 @@ object LibraryQueries {
         }
     }
 
-    /**
-     * Builds the To Read sections. With no grouping, Up Next items are lifted
-     * into their own section at the top — the replacement for the Notion
-     * page's "2026:" priority list. With grouping, Up Next items stay in their
-     * group (they still show their star).
-     */
+    /** Builds the To Read sections for the chosen grouping. Ungrouped is one headerless run. */
     fun toReadSections(
         books: List<Book>,
         groupBy: GroupBy,
         library: Library,
     ): List<BookSection> = when (groupBy) {
-        GroupBy.None -> {
-            val (pinned, rest) = books.partition { it.upNext }
-            buildList {
-                if (pinned.isNotEmpty()) add(BookSection("up_next", "Up Next", pinned))
-                if (rest.isNotEmpty()) add(BookSection("rest", if (pinned.isNotEmpty()) "Everything Else" else null, rest))
-            }
-        }
+        GroupBy.None -> if (books.isEmpty()) emptyList() else listOf(BookSection("all", null, books))
         GroupBy.Shelf -> {
             val byShelf = books.groupBy { it.shelfId?.takeIf { id -> library.shelf(id) != null } }
             library.shelves.mapNotNull { shelf ->
                 byShelf[shelf.id]?.let { BookSection(shelf.id, shelf.name, it) }
-            } + listOfNotNull(byShelf[null]?.let { BookSection("no_shelf", "No Shelf", it) })
-        }
-        GroupBy.Recommender -> {
-            // Same case-insensitive identity as Library.recommenders(), in
-            // that "most recommendations first" order.
-            val grouped = books.groupBy { it.recommendedBy.trim().lowercase() }
-            val names = library.recommenders()
-            names.mapNotNull { name ->
-                grouped[name.lowercase()]?.let { BookSection("from_${name.lowercase()}", "From $name", it) }
-            } + listOfNotNull(grouped[""]?.let { BookSection("from_none", "No Recommender", it) })
+            } + listOfNotNull(byShelf[null]?.let { BookSection("no_shelf", "No Genre", it) })
         }
         GroupBy.MonthAdded -> {
             // Section order follows the books' current sort.
@@ -116,17 +93,22 @@ object LibraryQueries {
     }
 
     /**
-     * "Pick for Me": a random To Read item, with Up Next items three times as
-     * likely. Authors, topics and other people's lists are skipped — they're
-     * leads to explore, not something to start tonight. [exclude] avoids
-     * immediately re-picking the one just shown.
+     * "Pick for Me": a random To Read book, with Up Next items three times as
+     * likely. Authors are skipped — they're leads to explore, not something
+     * to start tonight. [exclude] avoids immediately re-picking the one just
+     * shown.
      */
     fun pickRandom(library: Library, exclude: String? = null, random: Random = Random.Default): Book? {
         val candidates = active(library, ReadingStatus.WantToRead)
-            .filter { it.kind == ItemKind.Book || it.kind == ItemKind.Series }
+            .filter { it.kind == ItemKind.Book }
         val pool = candidates.filter { it.id != exclude }.ifEmpty { candidates }
         if (pool.isEmpty()) return null
-        val weights = pool.map { if (it.upNext) 3 else 1 }
+        // Better-ranked books are likelier picks; "Now" items likelier still.
+        val now = System.currentTimeMillis()
+        val weights = pool.map { b ->
+            val w = (Ranking.score(b, now) + 60).coerceIn(5.0, 160.0).toInt()
+            if (b.upNext) w * 3 else w
+        }
         var roll = random.nextInt(weights.sum())
         pool.forEachIndexed { i, book ->
             roll -= weights[i]

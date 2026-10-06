@@ -10,25 +10,25 @@ part lives in the app.
 
 ## Features
 
-- **Three tabs:** Reading · To Read (the landing tab) · Read. Swipe between
-  them, as in Habit Tracker.
+- **Three tabs:** Reading (what you're reading now, plus your Up Next queue) ·
+  To Read (the landing tab) · Read. Swipe between them, as in Habit Tracker.
 - **Quick capture:** a + button on every tab, plus:
   - the share sheet ("Add to Reading List")
   - the text-selection menu
   - a launcher shortcut
   - a home-screen widget
-- **Recommendation context:** who recommended it, why, and notes. Recommenders
-  you've used before are one-tap chips. You can group the list by recommender.
+- **Recommendation context:** who recommended it and why, shown when you open
+  a book. Names you've used before are suggested as you type.
 - **Open Library lookup:** suggestions appear as you type and fill in the
-  title, author, cover, page count and year. Settings → Fetch Missing Details
+  title, author and cover (page count and year come along silently). Settings → Fetch Missing Details
   fills in older entries.
 - **Duplicate warning** while typing, and **search** across every status.
-- **Shelves:** your own categories, each with an icon and colour. Item types
-  cover books, series, authors, topics, articles and other people's lists.
-- **Up Next** pins items to the top of To Read. **To Get** marks items you
-  still need a copy of. **Pick for Me** chooses something at random.
+- **Genres:** your own categories, each with an icon and colour. An item is
+  either a book or an author to explore.
+- **Up Next** queues books on the Reading tab. **Pick for Me** chooses
+  something at random.
 - **Reading progress:** ±10 pages at a time, a finish dialog with rating and
-  takeaways, a yearly goal with pace, per-shelf stats, and an optional limit
+  takeaways, a yearly goal with pace, per-genre stats, and an optional limit
   on how many books you read at once.
 - **Bulk Add** for pasted lists, a **Notebook** for free-form notes, a daily
   reading reminder, and an archive.

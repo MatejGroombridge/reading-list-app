@@ -5,6 +5,7 @@ import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -20,8 +21,8 @@ import dev.matejgroombridge.readinglist.ui.theme.AppTheme
 import kotlinx.coroutines.launch
 
 /**
- * The fastest way onto the list: a translucent activity that floats the
- * add dialog over whatever app you were in. Reached from
+ * The fastest way onto the list: opens the add page straight from whatever
+ * app you were in. Reached from
  *  - the share sheet (a link or text from Goodreads, a browser, a chat),
  *  - the text-selection menu ("Add to Reading List" on highlighted text),
  *  - the launcher shortcut and the widget's + button.
@@ -33,6 +34,7 @@ class QuickAddActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
         val prefill = SharedTextParser.parse(sharedText(intent))
 
         setContent {

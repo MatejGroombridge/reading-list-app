@@ -13,13 +13,11 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.HelpOutline
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Remove
 import androidx.compose.material3.AlertDialog
@@ -43,8 +41,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Popup
-import androidx.compose.ui.window.PopupProperties
 import dev.matejgroombridge.readinglist.ui.theme.ShelfColors
 import dev.matejgroombridge.readinglist.ui.theme.ShelfIcons
 
@@ -67,14 +63,13 @@ fun EditorSection(
 }
 
 /**
- * Uppercased caption + optional "?" help popover, then the contained card.
- * Tight 4dp spacing between caption and card so they read as a unit; the
- * parent Column owns inter-section spacing.
+ * Uppercased caption, then the contained card. Tight 4dp spacing between
+ * caption and card so they read as a unit; the parent Column owns
+ * inter-section spacing.
  */
 @Composable
 fun CaptionedSection(
     caption: String,
-    helpText: String? = null,
     trailing: (@Composable () -> Unit)? = null,
     content: @Composable () -> Unit,
 ) {
@@ -91,62 +86,10 @@ fun CaptionedSection(
                 color = MaterialTheme.colorScheme.primary,
                 fontWeight = FontWeight.SemiBold,
             )
-            if (helpText != null) {
-                Spacer(Modifier.width(4.dp))
-                HelpIcon(helpText = helpText)
-            }
             Spacer(Modifier.weight(1f))
             trailing?.invoke()
         }
         EditorSection(padding = 12.dp) { content() }
-    }
-}
-
-/**
- * Compact "?" icon. Tapping opens a small popover containing [helpText];
- * sized to sit flush with caption text without inflating its row.
- */
-@Composable
-fun HelpIcon(helpText: String) {
-    var showHelp by remember { mutableStateOf(false) }
-    Box {
-        Box(
-            modifier = Modifier
-                .size(18.dp)
-                .clip(CircleShape)
-                .clickable { showHelp = true },
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                imageVector = Icons.AutoMirrored.Outlined.HelpOutline,
-                contentDescription = "What's this?",
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(14.dp),
-            )
-        }
-        if (showHelp) {
-            Popup(
-                alignment = Alignment.TopStart,
-                onDismissRequest = { showHelp = false },
-                properties = PopupProperties(focusable = true),
-            ) {
-                Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    color = MaterialTheme.colorScheme.inverseSurface,
-                    contentColor = MaterialTheme.colorScheme.inverseOnSurface,
-                    shadowElevation = 8.dp,
-                    modifier = Modifier
-                        .padding(top = 24.dp)
-                        .widthIn(max = 280.dp),
-                ) {
-                    Text(
-                        text = helpText,
-                        style = MaterialTheme.typography.bodySmall,
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-                    )
-                }
-            }
-        }
     }
 }
 

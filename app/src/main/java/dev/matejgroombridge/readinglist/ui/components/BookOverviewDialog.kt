@@ -21,7 +21,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.MenuBook
-import androidx.compose.material.icons.automirrored.outlined.OpenInNew
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.Casino
 import androidx.compose.material.icons.outlined.Edit
@@ -49,14 +48,13 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.DialogProperties
 import dev.matejgroombridge.readinglist.data.model.Book
-import dev.matejgroombridge.readinglist.data.model.BookFormat
+import dev.matejgroombridge.readinglist.data.model.Interest
 import dev.matejgroombridge.readinglist.data.model.ItemKind
 import dev.matejgroombridge.readinglist.data.model.ReadingStatus
 import dev.matejgroombridge.readinglist.data.model.Shelf
@@ -66,7 +64,7 @@ import dev.matejgroombridge.readinglist.ui.util.Dates
 /** Everything the overview can ask its host to do. */
 class OverviewActions(
     val onEdit: () -> Unit,
-    val onToggleUpNext: () -> Unit,
+    val onSetInterest: (Interest) -> Unit,
     val onStartReading: () -> Unit,
     val onFinish: () -> Unit,
     val onAbandon: () -> Unit,
@@ -79,7 +77,7 @@ class OverviewActions(
 
 /**
  * The "item overview" pattern from Habit Tracker, for a book: identity at
- * the top, then the recommendation as a quote — who suggested it and why is
+ * the top, then the recommendation — who suggested it and why is
  * the whole reason this app exists — then whatever's actionable for the
  * item's current status. Tap outside to dismiss; no close button.
  *
@@ -129,20 +127,13 @@ fun BookOverviewDialog(
                         }
                     }
                     if (book.status == ReadingStatus.WantToRead) {
-                        IconButton(onClick = actions.onToggleUpNext) {
-                            Box(
-                                modifier = Modifier
-                                    .size(36.dp)
-                                    .background(if (book.upNext) accent.copy(alpha = 0.35f) else Color.Transparent, CircleShape),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Icon(
-                                    imageVector = if (book.upNext) Icons.Filled.Star else Icons.Outlined.StarOutline,
-                                    contentDescription = if (book.upNext) "Remove from Up Next" else "Add to Up Next",
-                                    tint = if (book.upNext) MaterialTheme.colorScheme.onSurface
-                                    else MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
+                        IconButton(onClick = actions.onStartReading) {
+                            Icon(Icons.AutoMirrored.Outlined.MenuBook, contentDescription = "Start reading",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        IconButton(onClick = actions.onFinish) {
+                            Icon(Icons.Outlined.TaskAlt, contentDescription = "Already read",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                     IconButton(onClick = actions.onEdit) {
@@ -180,7 +171,6 @@ fun BookOverviewDialog(
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             if (book.kind != ItemKind.Book) Pill(book.kind.label, accent.copy(alpha = 0.18f))
                             shelf?.let { Pill(it.name, accent.copy(alpha = 0.18f)) }
-                            if (book.toAcquire) Pill("Need a copy", accent.copy(alpha = 0.18f))
                         }
                     }
                 }
@@ -188,7 +178,9 @@ fun BookOverviewDialog(
                 val facts = listOfNotNull(
                     book.publishedYear.takeIf { it > 0 }?.toString(),
                     book.pageCount.takeIf { it > 0 }?.let { "$it pages" },
-                    book.format.takeIf { it != BookFormat.Any }?.label,
+                    book.publicRating.takeIf { book.publicRatingCount > 0 && it > 0 }?.let {
+                        "★ %.1f (%s ratings)".format(it, compactCount(book.publicRatingCount))
+                    },
                 ).joinToString(" · ")
                 if (facts.isNotEmpty()) {
                     Spacer(Modifier.height(10.dp))
@@ -200,19 +192,9 @@ fun BookOverviewDialog(
                     RecommendationQuote(book = book, accent = accent)
                 }
 
-                if (book.notes.isNotBlank()) {
-                    Spacer(Modifier.height(14.dp))
-                    LabelledText(label = "Notes", text = book.notes)
-                }
-
-                if (book.url.isNotBlank()) {
-                    Spacer(Modifier.height(10.dp))
-                    LinkPill(url = book.url)
-                }
-
                 Spacer(Modifier.height(16.dp))
                 when (book.status) {
-                    ReadingStatus.WantToRead -> ToReadActions(actions)
+                    ReadingStatus.WantToRead -> InterestPicker(book.interest, actions)
                     ReadingStatus.Reading -> ReadingSection(book, todayEpochDay, accent, actions)
                     ReadingStatus.Read -> ReadSection(book, accent, actions)
                     ReadingStatus.Abandoned -> AbandonedSection(book, actions)
@@ -239,8 +221,8 @@ private fun RecommendationQuote(book: Book, accent: Color) {
         modifier = Modifier.fillMaxWidth(),
     ) {
         Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
-            Icon(Icons.Outlined.FormatQuote, contentDescription = null, tint = accent, modifier = Modifier.size(22.dp))
             if (book.reason.isNotBlank()) {
+                Icon(Icons.Outlined.FormatQuote, contentDescription = null, tint = accent, modifier = Modifier.size(22.dp))
                 Text(
                     text = book.reason,
                     style = MaterialTheme.typography.bodyLarge,
@@ -261,18 +243,21 @@ private fun RecommendationQuote(book: Book, accent: Color) {
     }
 }
 
+/** How keen you are on it — "Now" puts it on the Reading tab's Up Next. */
 @Composable
-private fun ToReadActions(actions: OverviewActions) {
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-        Button(onClick = actions.onStartReading, modifier = Modifier.weight(1f)) {
-            Icon(Icons.AutoMirrored.Outlined.MenuBook, contentDescription = null, modifier = Modifier.size(18.dp))
-            Spacer(Modifier.width(6.dp))
-            Text("Start Reading")
-        }
-        FilledTonalButton(onClick = actions.onFinish, modifier = Modifier.weight(1f)) {
-            Text("Already Read")
-        }
-    }
+private fun InterestPicker(current: Interest, actions: OverviewActions) {
+    OptionGrid(
+        options = Interest.entries,
+        selected = current,
+        label = { it.label },
+        onSelect = actions.onSetInterest,
+        columns = 3,
+    )
+}
+
+private fun compactCount(n: Int): String = when {
+    n >= 1000 -> "%.1fk".format(n / 1000.0).replace(".0k", "k")
+    else -> n.toString()
 }
 
 @Composable
@@ -307,15 +292,9 @@ private fun ReadingSection(book: Book, todayEpochDay: Long, accent: Color, actio
                     max = book.pageCount,
                     step = 10,
                 )
-            } else {
-                Text(
-                    text = "Add a page count in Edit to track progress.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
             }
             book.startedOn?.let {
-                Spacer(Modifier.height(8.dp))
+                if (progress != null) Spacer(Modifier.height(8.dp))
                 Text(
                     text = "Started ${Dates.relativeDays(it, todayEpochDay)}",
                     style = MaterialTheme.typography.bodySmall,
@@ -411,32 +390,6 @@ private fun LabelledText(label: String, text: String) {
     }
 }
 
-@Composable
-private fun LinkPill(url: String) {
-    val uriHandler = LocalUriHandler.current
-    val host = runCatching { java.net.URI(url).host?.removePrefix("www.") }.getOrNull() ?: url
-    Surface(
-        shape = RoundedCornerShape(12.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-        modifier = Modifier
-            .clip(RoundedCornerShape(12.dp))
-            .clickable { runCatching { uriHandler.openUri(url) } },
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-        ) {
-            Icon(Icons.AutoMirrored.Outlined.OpenInNew, contentDescription = null, modifier = Modifier.size(16.dp))
-            Spacer(Modifier.width(8.dp))
-            Text(
-                text = host,
-                style = MaterialTheme.typography.labelLarge,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-    }
-}
 
 @Composable
 fun StatTile(

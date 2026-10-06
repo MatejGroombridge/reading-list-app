@@ -7,10 +7,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.Article
-import androidx.compose.material.icons.automirrored.outlined.ListAlt
-import androidx.compose.material.icons.automirrored.outlined.LibraryBooks
-import androidx.compose.material.icons.outlined.Lightbulb
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.StarOutline
@@ -36,21 +32,17 @@ import dev.matejgroombridge.readinglist.data.model.Shelf
 import dev.matejgroombridge.readinglist.ui.theme.ShelfColors
 import dev.matejgroombridge.readinglist.ui.theme.ShelfIcons
 
-/** Icon for non-book kinds; null for plain books (they use their shelf's icon). */
+/** Icon for authors; null for books (they use their genre's icon). */
 fun ItemKind.icon(): ImageVector? = when (this) {
     ItemKind.Book -> null
-    ItemKind.Series -> Icons.AutoMirrored.Outlined.LibraryBooks
     ItemKind.Author -> Icons.Outlined.Person
-    ItemKind.Topic -> Icons.Outlined.Lightbulb
-    ItemKind.Article -> Icons.AutoMirrored.Outlined.Article
-    ItemKind.List -> Icons.AutoMirrored.Outlined.ListAlt
 }
 
 /**
  * Book-shaped (3:4) leading tile used on every card and in the overview.
  * Shows the cover when there is one and covers are enabled; otherwise the
- * shelf's icon on its accent — or, for authors/topics/articles/lists, an
- * icon for the kind, so leads read differently from books at a glance.
+ * genre's icon on its accent — or, for authors, a person icon, so they
+ * read differently from books at a glance.
  * A failed cover load falls back to the icon tile.
  */
 @Composable
@@ -76,7 +68,7 @@ fun BookTile(
     ) {
         if (showCover) {
             AsyncImage(
-                model = book.coverUrl,
+                model = coverModel(book.coverUrl),
                 contentDescription = "Cover of ${book.title}",
                 contentScale = ContentScale.Crop,
                 onError = { coverFailed = true },
@@ -123,3 +115,11 @@ fun RatingStars(
         }
     }
 }
+
+/**
+ * Open Library answers a missing cover with a blank placeholder image rather
+ * than an error; `default=false` makes it a 404 so the genre-icon fallback
+ * shows instead of an empty tile.
+ */
+fun coverModel(url: String): String =
+    if ("covers.openlibrary.org" in url && "default=" !in url) url + (if ("?" in url) "&" else "?") + "default=false" else url

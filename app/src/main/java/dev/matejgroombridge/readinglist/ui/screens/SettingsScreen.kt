@@ -231,7 +231,7 @@ fun SettingsScreen(
                         viewModel.setOnlineLookup(it)
                     }
                     Divider()
-                    NavRow("Shelves", value = state.library.shelves.size.toString()) {
+                    NavRow("Genres", value = state.library.shelves.size.toString()) {
                         haptics.light()
                         onOpenShelves()
                     }

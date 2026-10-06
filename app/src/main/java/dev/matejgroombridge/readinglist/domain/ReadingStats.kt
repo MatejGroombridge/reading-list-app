@@ -17,14 +17,11 @@ data class ReadingStats(
     val byShelf: List<Pair<Shelf, Int>>,
 ) {
     companion object {
-        /**
-         * Only books and series count towards totals — finishing an article
-         * or "exploring an author" shouldn't move a books-per-year goal.
-         */
+        /** Only books count towards totals — "exploring an author" shouldn't move a books-per-year goal. */
         fun from(library: Library, today: LocalDate = LocalDate.now()): ReadingStats {
             val read = library.books.filter {
                 !it.archived && it.status == ReadingStatus.Read &&
-                    (it.kind == ItemKind.Book || it.kind == ItemKind.Series)
+                    it.kind == ItemKind.Book
             }
             val thisYear = read.filter { b -> b.finishedOn?.let { LocalDate.ofEpochDay(it).year == today.year } == true }
             val rated = read.filter { it.rating > 0 }

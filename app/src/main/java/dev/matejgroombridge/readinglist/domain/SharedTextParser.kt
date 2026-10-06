@@ -37,16 +37,16 @@ object SharedTextParser {
             .replace(TRAILING_SITE, "")
             .trim()
 
-        if (rest.isEmpty()) return BookPrefill(title = titleFromUrl(url), url = url)
+        if (rest.isEmpty()) return BookPrefill(title = titleFromUrl(url))
 
         // A long or multi-line share is someone's message about a book: keep
         // it as the reason and let the user type the title.
         if (rest.length > MAX_TITLE_LENGTH || rest.lines().size > 2) {
-            return BookPrefill(title = titleFromUrl(url), url = url, reason = rest)
+            return BookPrefill(title = titleFromUrl(url), reason = rest)
         }
 
         val (title, author) = splitTitleAuthor(rest.lines().joinToString(" "))
-        return BookPrefill(title = title, author = author, url = url)
+        return BookPrefill(title = title, author = author)
     }
 
     /**

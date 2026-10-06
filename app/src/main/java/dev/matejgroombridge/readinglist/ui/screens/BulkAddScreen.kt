@@ -77,12 +77,7 @@ fun BulkAddScreen(
                 .padding(horizontal = 16.dp, vertical = 4.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            CaptionedSection(
-                caption = "List",
-                helpText = "One per line, as \"Title - Author\" or \"Title by Author\". " +
-                    "Bullets and numbers are fine. Lines ending in ':' are treated as " +
-                    "headings and skipped; a trailing (aside) becomes a note.",
-            ) {
+            CaptionedSection(caption = "List") {
                 OutlinedTextField(
                     value = text,
                     onValueChange = { text = it },
@@ -166,9 +161,10 @@ fun BulkAddScreen(
                             Book(
                                 title = entry.title,
                                 author = entry.author,
-                                notes = entry.note,
                                 recommendedBy = from.trim(),
-                                reason = why.trim(),
+                                // A trailing "(aside)" is the closest thing a
+                                // pasted line has to a reason.
+                                reason = why.trim().ifEmpty { entry.note },
                                 shelfId = shelfId,
                             ).withStatus(status, today).let {
                                 // A pasted list of finished books is a log of

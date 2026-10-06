@@ -64,6 +64,7 @@ import dev.matejgroombridge.readinglist.ui.components.BookDialogHost
 import dev.matejgroombridge.readinglist.ui.components.ConfettiOverlay
 import dev.matejgroombridge.readinglist.ui.screens.ArchiveScreen
 import dev.matejgroombridge.readinglist.ui.screens.BulkAddScreen
+import dev.matejgroombridge.readinglist.ui.screens.DuelScreen
 import dev.matejgroombridge.readinglist.ui.screens.NotebookScreen
 import dev.matejgroombridge.readinglist.ui.screens.ReadScreen
 import dev.matejgroombridge.readinglist.ui.screens.ReadingScreen
@@ -85,6 +86,7 @@ private object Routes {
     const val SHELVES = "shelves"
     const val BULK_ADD = "bulk_add"
     const val NOTEBOOK = "notebook"
+    const val DUEL = "duel"
 }
 
 private data class BottomTab(val label: String, val icon: ImageVector, val status: ReadingStatus)
@@ -275,6 +277,14 @@ private fun AppShell(
             composable(Routes.SHELVES) {
                 ShelvesScreen(state = state, viewModel = libraryViewModel, onBack = { navController.popBackStack() })
             }
+            composable(Routes.DUEL) {
+                DuelScreen(
+                    state = state,
+                    settings = settings,
+                    viewModel = libraryViewModel,
+                    onBack = { navController.popBackStack() },
+                )
+            }
             composable(Routes.NOTEBOOK) {
                 NotebookScreen(state = state, viewModel = libraryViewModel, onBack = { navController.popBackStack() })
             }
@@ -393,6 +403,7 @@ private fun MainPager(
                     onGroupBy = settingsViewModel::setGroupBy,
                     onSortOrder = settingsViewModel::setSortOrder,
                     onOpenSearch = { navController.navigate(Routes.SEARCH) },
+                    onOpenDuel = { navController.navigate(Routes.DUEL) },
                     onOpenSettings = openSettings,
                 )
                 MainActivity.PAGE_READ -> ReadScreen(

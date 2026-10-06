@@ -34,27 +34,24 @@ class LibraryQueriesTest {
     }
 
     @Test
-    fun `ungrouped list lifts up next into its own section`() {
-        val lib = Library(books = listOf(Book(title = "X"), Book(title = "Y", upNext = true)))
+    fun `ungrouped list is one headerless section`() {
+        val lib = Library(books = listOf(Book(title = "X"), Book(title = "Y")))
         val sections = LibraryQueries.toReadSections(lib.books, GroupBy.None, lib)
-        assertEquals(listOf("Up Next", "Everything Else"), sections.map { it.title })
-        assertEquals("Y", sections.first().books.single().title)
+        assertEquals(listOf<String?>(null), sections.map { it.title })
+        assertEquals(2, sections.single().books.size)
     }
 
     @Test
-    fun `recommender grouping merges case and puts the most frequent first`() {
+    fun `genre grouping follows shelf order with ungenred last`() {
         val lib = Library(
             books = listOf(
-                Book(title = "1", recommendedBy = "Angela"),
-                Book(title = "2", recommendedBy = "jack"),
-                Book(title = "3", recommendedBy = "angela"),
-                Book(title = "4"),
+                Book(title = "1", shelfId = "shelf_fiction"),
+                Book(title = "2"),
+                Book(title = "3", shelfId = "shelf_self_improvement"),
             ),
         )
-        val sections = LibraryQueries.toReadSections(lib.books, GroupBy.Recommender, lib)
-        assertEquals(listOf(2, 1, 1), sections.map { it.books.size })
-        assertTrue(sections.first().title!!.startsWith("From ", ignoreCase = false))
-        assertEquals("No Recommender", sections.last().title)
+        val sections = LibraryQueries.toReadSections(lib.books, GroupBy.Shelf, lib)
+        assertEquals(listOf("Self Improvement", "Fiction", "No Genre"), sections.map { it.title })
     }
 
     @Test

@@ -5,13 +5,14 @@ import dev.matejgroombridge.readinglist.ui.theme.ThemeMode
 /** How the To Read list is split into sections. */
 enum class GroupBy(val label: String) {
     None("None"),
-    Shelf("Shelf"),
-    Recommender("Recommended By"),
+    Shelf("Genre"),
     MonthAdded("Month Added"),
     Kind("Type"),
 }
 
 enum class SortOrder(val label: String) {
+    /** Duels + community rating + freshness − staleness; see domain/Ranking. */
+    Ranked("Top Ranked"),
     Recent("Recently Added"),
     Oldest("Oldest First"),
     Title("Title"),
@@ -42,7 +43,7 @@ data class Settings(
     /** Query Open Library for suggestions while typing a title. */
     val onlineLookup: Boolean = true,
     val groupBy: GroupBy = GroupBy.None,
-    val sortOrder: SortOrder = SortOrder.Recent,
+    val sortOrder: SortOrder = SortOrder.Ranked,
 )
 
 /**

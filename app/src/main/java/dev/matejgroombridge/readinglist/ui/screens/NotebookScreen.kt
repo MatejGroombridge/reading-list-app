@@ -58,7 +58,6 @@ fun NotebookScreen(
             value = text.orEmpty(),
             onValueChange = { text = it },
             enabled = text != null,
-            placeholder = { Text("How you want to read, advice worth remembering…") },
             keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
             modifier = Modifier
                 .fillMaxSize()

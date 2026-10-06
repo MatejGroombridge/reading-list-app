@@ -35,7 +35,7 @@ class SettingsRepository(private val context: Context) {
             swipeToNavigate = prefs[KEY_SWIPE_TO_NAVIGATE] ?: true,
             onlineLookup = prefs[KEY_ONLINE_LOOKUP] ?: true,
             groupBy = prefs[KEY_GROUP_BY]?.let { parse(it, GroupBy.None) } ?: GroupBy.None,
-            sortOrder = prefs[KEY_SORT_ORDER]?.let { parse(it, SortOrder.Recent) } ?: SortOrder.Recent,
+            sortOrder = prefs[KEY_SORT_ORDER]?.let { parse(it, SortOrder.Ranked) } ?: SortOrder.Ranked,
         )
     }
 

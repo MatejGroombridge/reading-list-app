@@ -1,5 +1,11 @@
 # Reading List — Plan
 
+> **Revised 6 Oct 2026** after first use: removed To Get, series, topics,
+> articles, reading lists, notes/link/pages/year/format fields, tooltips and
+> recommender grouping; renamed shelves to genres; moved Up Next to the
+> Reading tab; made add/edit a full-screen page; cards no longer show who
+> recommended a book. Sections below describe the original plan.
+
 Replaces the Notion "Reading List" page with a phone-first app in the Groom Hub
 suite. It reuses the Habit Tracker's design language: pastel identity colours,
 20dp cards, the settings card layout, haptics, confetti and the three-page pager.

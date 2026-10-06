@@ -39,7 +39,9 @@ data class LibraryUiState(
     val todayEpochDay: Long = LocalDate.now().toEpochDay(),
 ) {
     val active: List<Book> = library.books.filterNot { it.archived }
-    val toRead: List<Book> = active.filter { it.status == ReadingStatus.WantToRead }
+    val toRead: List<Book> = active.filter { it.status == ReadingStatus.WantToRead && !it.upNext }
+    /** Queued To Read items — shown on the Reading tab, not in To Read. */
+    val upNext: List<Book> = active.filter { it.status == ReadingStatus.WantToRead && it.upNext }
     val reading: List<Book> = active.filter { it.status == ReadingStatus.Reading }
     val abandoned: List<Book> = active.filter { it.status == ReadingStatus.Abandoned }
     val archived: List<Book> = library.books.filter { it.archived }
@@ -101,7 +103,14 @@ class LibraryViewModel(
 
     fun setRating(id: String, rating: Int) = updateBook(id) { it.copy(rating = rating.coerceIn(0, 5)) }
 
-    fun toggleUpNext(id: String) = updateBook(id) { it.copy(upNext = !it.upNext) }
+    fun toggleUpNext(id: String) = updateBook(id) { it.copy(upNext = !it.upNext, someday = false) }
+
+    fun setInterest(id: String, level: dev.matejgroombridge.readinglist.data.model.Interest) =
+        updateBook(id) { it.withInterest(level) }
+
+    fun recordDuel(winnerId: String, loserId: String) {
+        viewModelScope.launch { repository.recordDuel(winnerId, loserId) }
+    }
 
     fun setArchived(id: String, archived: Boolean) = updateBook(id) { it.copy(archived = archived, upNext = false) }
 
@@ -145,11 +154,11 @@ class LibraryViewModel(
     val enrich: StateFlow<EnrichProgress?> = _enrich.asStateFlow()
     private var enrichJob: Job? = null
 
-    /** Books and series that are missing a cover, page count or year. */
+    /** Books that are missing a cover, page count, year or community rating. */
     fun enrichCandidates(library: Library = uiState.value.library): List<Book> = library.books.filter {
         !it.archived && it.title.isNotBlank() &&
-            (it.kind == ItemKind.Book || it.kind == ItemKind.Series) &&
-            (it.coverUrl.isBlank() || it.pageCount == 0 || it.publishedYear == 0)
+            it.kind == ItemKind.Book &&
+            (it.coverUrl.isBlank() || it.pageCount == 0 || it.publishedYear == 0 || it.publicRatingCount == 0)
     }
 
     /**
@@ -179,6 +188,8 @@ class LibraryViewModel(
                             coverUrl = b.coverUrl.ifBlank { match.coverUrl },
                             pageCount = if (b.pageCount > 0) b.pageCount else match.pageCount,
                             publishedYear = if (b.publishedYear > 0) b.publishedYear else match.publishedYear,
+                            publicRating = if (b.publicRatingCount > 0) b.publicRating else match.ratingAverage,
+                            publicRatingCount = if (b.publicRatingCount > 0) b.publicRatingCount else match.ratingCount,
                         )
                         changed = next != b
                         next

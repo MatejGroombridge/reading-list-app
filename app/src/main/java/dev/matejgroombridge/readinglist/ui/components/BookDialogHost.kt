@@ -75,6 +75,11 @@ class BookActions(
         viewModel.setStatus(book.id, ReadingStatus.WantToRead)
     }
 
+    fun setInterest(book: Book, level: dev.matejgroombridge.readinglist.data.model.Interest) {
+        haptics.light()
+        viewModel.setInterest(book.id, level)
+    }
+
     fun toggleUpNext(book: Book) {
         haptics.light()
         viewModel.toggleUpNext(book.id)
@@ -99,7 +104,7 @@ class BookActions(
                 add(QuickAction("Already Read", Icons.Outlined.TaskAlt) { finish(book) })
                 add(
                     QuickAction(
-                        if (book.upNext) "Remove from Up Next" else "Add to Up Next",
+                        if (book.upNext) "Move Out of Now" else "Read Now",
                         if (book.upNext) Icons.Outlined.StarOutline else Icons.Filled.Star,
                     ) { toggleUpNext(book) },
                 )
@@ -186,7 +191,7 @@ fun BookDialogHost(
             val overviewActions =
                 OverviewActions(
                     onEdit = { actions.open(BookDialog.Edit(book.id)) },
-                    onToggleUpNext = { actions.toggleUpNext(book) },
+                    onSetInterest = { level -> actions.setInterest(book, level) },
                     onStartReading = { actions.startReading(book) },
                     onFinish = { actions.finish(book) },
                     onAbandon = { actions.abandon(book) },

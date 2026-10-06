@@ -10,9 +10,11 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -25,12 +27,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Archive
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Close
-import androidx.compose.material.icons.outlined.ExpandLess
-import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.TravelExplore
 import androidx.compose.material.icons.outlined.Unarchive
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -39,9 +39,12 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -60,13 +63,13 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.activity.compose.BackHandler
 import coil.compose.AsyncImage
 import dev.matejgroombridge.readinglist.data.model.Book
-import dev.matejgroombridge.readinglist.data.model.BookFormat
 import dev.matejgroombridge.readinglist.data.model.BookPrefill
+import dev.matejgroombridge.readinglist.data.model.Interest
 import dev.matejgroombridge.readinglist.data.model.ItemKind
 import dev.matejgroombridge.readinglist.data.model.Library
 import dev.matejgroombridge.readinglist.data.model.ReadingStatus
@@ -92,18 +95,16 @@ sealed interface BookEditorResult {
 private enum class DateField { Started, Finished }
 
 /**
- * One dialog for adding and editing.
- *
- * Adding opens in a quick mode: title, author, who recommended it, why, and
- * status — the minimum worth capturing while someone is telling you about a
- * book. "More Details" reveals shelf, type, notes, link, pages, format and
- * the status-specific dates. Editing always shows everything.
+ * Full-screen page for adding and editing, layered over the app (or shown on
+ * its own when reached from the share sheet). One scrolling
+ * column, every field visible: what it is, who recommended it and why, its
+ * status and its genre — plus dates and rating once it's being read.
  *
  * While a new title is typed, Open Library suggestions appear underneath
- * (picking one fills the canonical title, author, cover, pages and year),
- * and an inline warning appears if the title is already on the list.
+ * (picking one fills the canonical title, author and cover), and an inline
+ * warning appears if the title is already on the list.
  */
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BookEditorDialog(
     existing: Book?,
@@ -124,18 +125,24 @@ fun BookEditorDialog(
     var author by remember { mutableStateOf(existing?.author ?: prefill.author) }
     var kind by remember { mutableStateOf(existing?.kind ?: ItemKind.Book) }
     var status by remember { mutableStateOf(existing?.status ?: prefill.status) }
+    var interest by remember {
+        mutableStateOf(
+            existing?.interest ?: when {
+                prefill.upNext -> Interest.Now
+                prefill.someday -> Interest.Someday
+                else -> Interest.Interested
+            },
+        )
+    }
+    var publicRating by remember { mutableStateOf(existing?.publicRating ?: 0.0) }
+    var publicRatingCount by remember { mutableIntStateOf(existing?.publicRatingCount ?: 0) }
     var shelfId by remember { mutableStateOf(existing?.shelfId) }
     var recommendedBy by remember { mutableStateOf(existing?.recommendedBy.orEmpty()) }
     var reason by remember { mutableStateOf(existing?.reason ?: prefill.reason) }
-    var notes by remember { mutableStateOf(existing?.notes.orEmpty()) }
-    var url by remember { mutableStateOf(existing?.url ?: prefill.url) }
     var coverUrl by remember { mutableStateOf(existing?.coverUrl.orEmpty()) }
-    var pagesText by remember { mutableStateOf(existing?.pageCount?.takeIf { it > 0 }?.toString().orEmpty()) }
-    var yearText by remember { mutableStateOf(existing?.publishedYear?.takeIf { it > 0 }?.toString().orEmpty()) }
+    var pageCount by remember { mutableIntStateOf(existing?.pageCount ?: 0) }
+    var publishedYear by remember { mutableIntStateOf(existing?.publishedYear ?: 0) }
     var currentPageText by remember { mutableStateOf(existing?.currentPage?.takeIf { it > 0 }?.toString().orEmpty()) }
-    var format by remember { mutableStateOf(existing?.format ?: BookFormat.Any) }
-    var upNext by remember { mutableStateOf(existing?.upNext ?: false) }
-    var toAcquire by remember { mutableStateOf(existing?.toAcquire ?: false) }
     var rating by remember { mutableIntStateOf(existing?.rating ?: 0) }
     var review by remember { mutableStateOf(existing?.review.orEmpty()) }
     var startedOn by remember {
@@ -144,8 +151,6 @@ fun BookEditorDialog(
     var finishedOn by remember {
         mutableStateOf(existing?.finishedOn ?: if (prefill.status == ReadingStatus.Read) today else null)
     }
-
-    var expanded by remember { mutableStateOf(isEdit || prefill.status == ReadingStatus.Read) }
     var pickingDate by remember { mutableStateOf<DateField?>(null) }
 
     // --- Online lookup ------------------------------------------------------
@@ -157,8 +162,8 @@ fun BookEditorDialog(
     var suggestions by remember { mutableStateOf<List<BookSuggestion>>(emptyList()) }
     var searching by remember { mutableStateOf(false) }
 
-    LaunchedEffect(title, lookupArmed, lookupNow) {
-        if (!lookupArmed || title.trim().length < BookLookup.MIN_QUERY_LENGTH) {
+    LaunchedEffect(title, lookupArmed, lookupNow, kind) {
+        if (!lookupArmed || kind != ItemKind.Book || title.trim().length < BookLookup.MIN_QUERY_LENGTH) {
             suggestions = emptyList()
             searching = false
             return@LaunchedEffect
@@ -177,22 +182,25 @@ fun BookEditorDialog(
 
     val titleFocus = remember { FocusRequester() }
     LaunchedEffect(Unit) {
-        if (!isEdit) runCatching { titleFocus.requestFocus() }
+        if (!isEdit && title.isEmpty()) runCatching { titleFocus.requestFocus() }
     }
 
     fun changeStatus(next: ReadingStatus) {
         status = next
         if (next == ReadingStatus.Reading && startedOn == null) startedOn = today
         if ((next == ReadingStatus.Read || next == ReadingStatus.Abandoned) && finishedOn == null) finishedOn = today
-        if (next == ReadingStatus.Read) expanded = true
     }
 
     fun applySuggestion(s: BookSuggestion) {
         title = s.title
         if (s.author.isNotBlank()) author = s.author
-        if (s.pageCount > 0) pagesText = s.pageCount.toString()
-        if (s.publishedYear > 0) yearText = s.publishedYear.toString()
+        if (s.pageCount > 0) pageCount = s.pageCount
+        if (s.publishedYear > 0) publishedYear = s.publishedYear
         if (s.coverUrl.isNotBlank()) coverUrl = s.coverUrl
+        if (s.ratingCount > 0) {
+            publicRating = s.ratingAverage
+            publicRatingCount = s.ratingCount
+        }
         lookupArmed = false
         suggestions = emptyList()
     }
@@ -201,29 +209,27 @@ fun BookEditorDialog(
 
     fun submit() {
         if (!canSave) return
-        val pages = pagesText.toIntOrNull()?.coerceAtLeast(0) ?: 0
         val base = existing ?: Book(title = "")
         val book = base.copy(
             title = title.trim(),
-            author = author.trim(),
+            author = if (kind == ItemKind.Author) "" else author.trim(),
             kind = kind,
             status = status,
+            upNext = interest == Interest.Now && status == ReadingStatus.WantToRead,
+            someday = interest == Interest.Someday && status == ReadingStatus.WantToRead,
+            publicRating = publicRating,
+            publicRatingCount = publicRatingCount,
             shelfId = shelfId?.takeIf { id -> library.shelf(id) != null },
             recommendedBy = recommendedBy.trim(),
             reason = reason.trim(),
-            notes = notes.trim(),
-            url = url.trim(),
             coverUrl = coverUrl,
-            pageCount = pages,
-            publishedYear = yearText.toIntOrNull()?.coerceAtLeast(0) ?: 0,
+            pageCount = pageCount,
+            publishedYear = publishedYear,
             currentPage = when (status) {
                 ReadingStatus.WantToRead -> 0
-                ReadingStatus.Read -> if (pages > 0) pages else currentPageText.toIntOrNull() ?: 0
-                else -> (currentPageText.toIntOrNull() ?: 0).let { if (pages > 0) it.coerceIn(0, pages) else it }
+                ReadingStatus.Read -> if (pageCount > 0) pageCount else base.currentPage
+                else -> (currentPageText.toIntOrNull() ?: 0).let { if (pageCount > 0) it.coerceIn(0, pageCount) else it }
             },
-            format = format,
-            upNext = upNext && status == ReadingStatus.WantToRead,
-            toAcquire = toAcquire && status != ReadingStatus.Read,
             rating = if (status == ReadingStatus.Read) rating else base.rating,
             review = review.trim(),
             startedOn = if (status == ReadingStatus.WantToRead) null else startedOn,
@@ -232,277 +238,204 @@ fun BookEditorDialog(
         onResult(BookEditorResult.Save(book))
     }
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = if (isEdit) "Edit ${kind.label}" else "Add to List",
-                    modifier = Modifier.weight(1f),
-                )
-                if (existing != null) {
-                    IconButton(onClick = { onResult(BookEditorResult.Archive(!existing.archived)) }) {
-                        Icon(
-                            imageVector = if (existing.archived) Icons.Outlined.Unarchive else Icons.Outlined.Archive,
-                            contentDescription = if (existing.archived) "Restore" else "Archive",
+    // Drawn as a full-screen layer in the host window rather than a dialog
+    // window, so the status bar and keyboard insets behave like any other
+    // screen. Back closes it.
+    BackHandler(onBack = onDismiss)
+    run {
+        Scaffold(
+            modifier = Modifier.fillMaxSize(),
+            containerColor = MaterialTheme.colorScheme.background,
+            topBar = {
+                TopAppBar(
+                    navigationIcon = {
+                        IconButton(onClick = onDismiss) { Icon(Icons.Outlined.Close, contentDescription = "Close") }
+                    },
+                    title = {
+                        Text(
+                            text = if (isEdit) "Edit ${kind.label}" else "New ${kind.label}",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.SemiBold,
                         )
-                    }
-                }
-            }
-        },
-        text = {
+                    },
+                    actions = {
+                        if (existing != null) {
+                            IconButton(onClick = { onResult(BookEditorResult.Archive(!existing.archived)) }) {
+                                Icon(
+                                    imageVector = if (existing.archived) Icons.Outlined.Unarchive else Icons.Outlined.Archive,
+                                    contentDescription = if (existing.archived) "Restore" else "Archive",
+                                )
+                            }
+                        }
+                        TextButton(onClick = ::submit, enabled = canSave) {
+                            Text("Save", fontWeight = FontWeight.SemiBold)
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
+                )
+            },
+        ) { padding ->
             Column(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(max = 560.dp)
-                    .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
+                    .fillMaxSize()
+                    .padding(padding)
+                    .imePadding()
+                    .verticalScroll(rememberScrollState())
+                    .navigationBarsPadding()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(20.dp),
             ) {
-                // --- Identity ---------------------------------------------
+                // --- What it is ---------------------------------------------
                 EditorSection(padding = 12.dp) {
-                    OutlinedTextField(
-                        value = title,
-                        onValueChange = { title = it },
-                        label = { Text(if (kind == ItemKind.Author) "Author's name" else "Title") },
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(
-                            capitalization = KeyboardCapitalization.Words,
-                            imeAction = ImeAction.Next,
-                        ),
-                        trailingIcon = if (onlineLookup) {
-                            {
-                                IconButton(onClick = {
-                                    lookupArmed = true
-                                    skipDebounce = true
-                                    lookupNow++
-                                }) {
-                                    Icon(Icons.Outlined.TravelExplore, contentDescription = "Find details online")
-                                }
-                            }
-                        } else null,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .focusRequester(titleFocus),
-                    )
-                    if (kind != ItemKind.Author) {
-                        Spacer(Modifier.height(8.dp))
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        OptionGrid(
+                            options = ItemKind.entries,
+                            selected = kind,
+                            label = { it.label },
+                            onSelect = { kind = it },
+                        )
                         OutlinedTextField(
-                            value = author,
-                            onValueChange = { author = it },
-                            label = { Text("Author (optional)") },
+                            value = title,
+                            onValueChange = { title = it },
+                            label = { Text(if (kind == ItemKind.Author) "Name" else "Title") },
                             singleLine = true,
                             keyboardOptions = KeyboardOptions(
                                 capitalization = KeyboardCapitalization.Words,
                                 imeAction = ImeAction.Next,
                             ),
-                            modifier = Modifier.fillMaxWidth(),
+                            trailingIcon = if (onlineLookup && kind == ItemKind.Book) {
+                                {
+                                    IconButton(onClick = {
+                                        lookupArmed = true
+                                        skipDebounce = true
+                                        lookupNow++
+                                    }) {
+                                        Icon(Icons.Outlined.TravelExplore, contentDescription = "Find details online")
+                                    }
+                                }
+                            } else null,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .focusRequester(titleFocus),
                         )
-                    }
-                    if (duplicate != null) {
-                        Spacer(Modifier.height(8.dp))
-                        DuplicateWarning(duplicate, onOpen = onOpenDuplicate)
-                    }
-                    if (searching) {
-                        Spacer(Modifier.height(10.dp))
-                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-                    }
-                    if (suggestions.isNotEmpty()) {
-                        Spacer(Modifier.height(8.dp))
-                        SuggestionList(
-                            suggestions = suggestions,
-                            showCovers = showCovers,
-                            onPick = ::applySuggestion,
-                            onClose = {
-                                lookupArmed = false
-                                suggestions = emptyList()
-                            },
-                        )
-                    }
-                }
-
-                // --- Recommendation ----------------------------------------
-                CaptionedSection(
-                    caption = "Recommendation",
-                    helpText = "Who pointed you to it and why. Months later this is " +
-                        "the context that decides whether it's worth reading next.",
-                ) {
-                    OutlinedTextField(
-                        value = recommendedBy,
-                        onValueChange = { recommendedBy = it },
-                        label = { Text("From") },
-                        placeholder = { Text("A friend, a podcast…") },
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(
-                            capitalization = KeyboardCapitalization.Words,
-                            imeAction = ImeAction.Next,
-                        ),
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    RecommenderChips(
-                        all = recommenders,
-                        current = recommendedBy,
-                        onPick = { recommendedBy = it },
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    OutlinedTextField(
-                        value = reason,
-                        onValueChange = { reason = it },
-                        label = { Text("Why") },
-                        placeholder = { Text("What made it worth reading?") },
-                        minLines = 2,
-                        maxLines = 6,
-                        keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                }
-
-                // --- Status ------------------------------------------------
-                CaptionedSection(caption = "Status") {
-                    OptionGrid(
-                        options = ReadingStatus.entries,
-                        selected = status,
-                        label = { it.label },
-                        onSelect = ::changeStatus,
-                    )
-                }
-
-                if (!isEdit) {
-                    TextButton(
-                        onClick = { expanded = !expanded },
-                        modifier = Modifier.align(Alignment.CenterHorizontally),
-                    ) {
-                        Text(if (expanded) "Fewer Details" else "More Details")
-                        Spacer(Modifier.width(4.dp))
-                        Icon(
-                            if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp),
-                        )
+                        if (searching) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                        if (suggestions.isNotEmpty()) {
+                            SuggestionList(
+                                suggestions = suggestions,
+                                showCovers = showCovers,
+                                onPick = ::applySuggestion,
+                                onClose = {
+                                    lookupArmed = false
+                                    suggestions = emptyList()
+                                },
+                            )
+                        }
+                        if (duplicate != null) DuplicateWarning(duplicate, onOpen = onOpenDuplicate)
+                        if (kind == ItemKind.Book) {
+                            OutlinedTextField(
+                                value = author,
+                                onValueChange = { author = it },
+                                label = { Text("Author") },
+                                singleLine = true,
+                                keyboardOptions = KeyboardOptions(
+                                    capitalization = KeyboardCapitalization.Words,
+                                    imeAction = ImeAction.Next,
+                                ),
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                        }
                     }
                 }
-                if (!expanded) return@Column
 
-                // --- Shelf ---------------------------------------------------
-                CaptionedSection(caption = "Shelf") {
-                    ShelfChips(library = library, selectedId = shelfId, onSelect = { shelfId = it })
-                }
-
-                // --- Type ----------------------------------------------------
-                CaptionedSection(
-                    caption = "Type",
-                    helpText = "Not everything worth noting is one book: an author to " +
-                        "explore, a topic to study, an article, or someone else's list.",
-                ) {
-                    OptionGrid(
-                        options = ItemKind.entries,
-                        selected = kind,
-                        label = { if (it == ItemKind.List) "List" else it.label },
-                        onSelect = { kind = it },
-                        columns = 3,
-                    )
-                }
-
-                // --- Details ---------------------------------------------------
-                CaptionedSection(caption = "Details") {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                // --- Recommendation -------------------------------------------
+                CaptionedSection(caption = "Recommended By") {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Column {
+                            OutlinedTextField(
+                                value = recommendedBy,
+                                onValueChange = { recommendedBy = it },
+                                label = { Text("Name") },
+                                singleLine = true,
+                                keyboardOptions = KeyboardOptions(
+                                    capitalization = KeyboardCapitalization.Words,
+                                    imeAction = ImeAction.Next,
+                                ),
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                            RecommenderSuggestions(
+                                all = recommenders,
+                                typed = recommendedBy,
+                                onPick = { recommendedBy = it },
+                            )
+                        }
                         OutlinedTextField(
-                            value = notes,
-                            onValueChange = { notes = it },
-                            label = { Text("Notes") },
-                            placeholder = { Text("Edition, tips, spoilers to avoid…") },
-                            minLines = 1,
+                            value = reason,
+                            onValueChange = { reason = it },
+                            label = { Text("Why") },
+                            minLines = 2,
                             maxLines = 6,
                             keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
                             modifier = Modifier.fillMaxWidth(),
                         )
-                        OutlinedTextField(
-                            value = url,
-                            onValueChange = { url = it },
-                            label = { Text("Link") },
-                            singleLine = true,
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            OutlinedTextField(
-                                value = pagesText,
-                                onValueChange = { pagesText = it.filter(Char::isDigit).take(5) },
-                                label = { Text("Pages") },
-                                singleLine = true,
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                modifier = Modifier.weight(1f),
-                            )
-                            OutlinedTextField(
-                                value = yearText,
-                                onValueChange = { yearText = it.filter(Char::isDigit).take(4) },
-                                label = { Text("Year") },
-                                singleLine = true,
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                modifier = Modifier.weight(1f),
-                            )
-                        }
-                        if (coverUrl.isNotBlank()) {
-                            CoverRow(coverUrl = coverUrl, onRemove = { coverUrl = "" })
-                        }
-                        Text(
-                            text = "Format",
-                            style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(top = 4.dp, start = 2.dp),
-                        )
+                    }
+                }
+
+                // --- Status ---------------------------------------------------
+                CaptionedSection(caption = "Status") {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         OptionGrid(
-                            options = BookFormat.entries,
-                            selected = format,
+                            options = ReadingStatus.entries,
+                            selected = status,
                             label = { it.label },
-                            onSelect = { format = it },
-                            columns = 4,
+                            onSelect = ::changeStatus,
                         )
                         if (status == ReadingStatus.WantToRead) {
-                            EditorSwitchRow(
-                                label = "Up next",
-                                supporting = "Pin it to the top of To Read",
-                                checked = upNext,
-                                onCheckedChange = { upNext = it },
+                            Text(
+                                text = "How keen?",
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(start = 2.dp, top = 4.dp),
                             )
-                        }
-                        if (status != ReadingStatus.Read) {
-                            EditorSwitchRow(
-                                label = "Need a copy",
-                                supporting = "Still to buy, borrow or download",
-                                checked = toAcquire,
-                                onCheckedChange = { toAcquire = it },
+                            OptionGrid(
+                                options = Interest.entries,
+                                selected = interest,
+                                label = { it.label },
+                                onSelect = { interest = it },
+                                columns = 3,
                             )
                         }
                     }
                 }
 
-                // --- Status-specific -------------------------------------------
+                // --- Genre ------------------------------------------------------
+                CaptionedSection(caption = "Genre") {
+                    ShelfChips(library = library, selectedId = shelfId, onSelect = { shelfId = it })
+                }
+
+                // --- Status-specific --------------------------------------------
                 when (status) {
                     ReadingStatus.WantToRead -> Unit
                     ReadingStatus.Reading -> CaptionedSection(caption = "Progress") {
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             DateRow("Started", startedOn) { pickingDate = DateField.Started }
-                            OutlinedTextField(
-                                value = currentPageText,
-                                onValueChange = { currentPageText = it.filter(Char::isDigit).take(5) },
-                                label = { Text("Current page") },
-                                singleLine = true,
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                modifier = Modifier.fillMaxWidth(),
-                            )
+                            if (pageCount > 0) {
+                                OutlinedTextField(
+                                    value = currentPageText,
+                                    onValueChange = { currentPageText = it.filter(Char::isDigit).take(5) },
+                                    label = { Text("Current page of $pageCount") },
+                                    singleLine = true,
+                                    keyboardOptions = KeyboardOptions(
+                                        keyboardType = androidx.compose.ui.text.input.KeyboardType.Number,
+                                    ),
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                            }
                         }
                     }
                     ReadingStatus.Read -> CaptionedSection(caption = "Finished") {
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.fillMaxWidth(),
-                            ) {
-                                Text(
-                                    text = "Rating",
-                                    style = MaterialTheme.typography.bodyLarge,
-                                    modifier = Modifier.weight(1f),
-                                )
+                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                                Text("Rating", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
                                 RatingStars(rating = rating, onRate = { rating = it }, size = 28.dp)
                             }
                             DateRow("Started", startedOn) { pickingDate = DateField.Started }
@@ -525,50 +458,46 @@ fun BookEditorDialog(
                         }
                     }
                 }
+                Spacer(Modifier.height(24.dp))
             }
-        },
-        confirmButton = {
-            TextButton(onClick = ::submit, enabled = canSave) { Text(if (isEdit) "Save" else "Add") }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
-        },
-    )
-
-    pickingDate?.let { field ->
-        val initial = when (field) {
-            DateField.Started -> startedOn
-            DateField.Finished -> finishedOn
-        } ?: today
-        val pickerState = rememberDatePickerState(initialSelectedDateMillis = Dates.epochDayToPickerMillis(initial))
-        fun set(value: Long?) {
-            when (field) {
-                DateField.Started -> startedOn = value
-                DateField.Finished -> finishedOn = value
-            }
-            pickingDate = null
         }
-        DatePickerDialog(
-            onDismissRequest = { pickingDate = null },
-            confirmButton = {
-                TextButton(onClick = { set(pickerState.selectedDateMillis?.let(Dates::pickerMillisToEpochDay)) }) {
-                    Text("OK")
+
+        pickingDate?.let { field ->
+            val initial = when (field) {
+                DateField.Started -> startedOn
+                DateField.Finished -> finishedOn
+            } ?: today
+            val pickerState = rememberDatePickerState(initialSelectedDateMillis = Dates.epochDayToPickerMillis(initial))
+            fun set(value: Long?) {
+                when (field) {
+                    DateField.Started -> startedOn = value
+                    DateField.Finished -> finishedOn = value
                 }
-            },
-            dismissButton = {
-                Row {
-                    TextButton(onClick = { set(null) }) { Text("Clear") }
-                    TextButton(onClick = { pickingDate = null }) { Text("Cancel") }
-                }
-            },
-        ) {
-            DatePicker(state = pickerState)
+                pickingDate = null
+            }
+            DatePickerDialog(
+                onDismissRequest = { pickingDate = null },
+                confirmButton = {
+                    TextButton(onClick = { set(pickerState.selectedDateMillis?.let(Dates::pickerMillisToEpochDay)) }) {
+                        Text("OK")
+                    }
+                },
+                dismissButton = {
+                    Row {
+                        TextButton(onClick = { set(null) }) { Text("Clear") }
+                        TextButton(onClick = { pickingDate = null }) { Text("Cancel") }
+                    }
+                },
+            ) {
+                DatePicker(state = pickerState)
+            }
         }
     }
 }
 
 private const val LOOKUP_DEBOUNCE_MS = 450L
 private const val MAX_SUGGESTIONS = 4
+private const val MAX_RECOMMENDER_SUGGESTIONS = 4
 
 @Composable
 private fun DuplicateWarning(duplicate: Book, onOpen: ((Book) -> Unit)?) {
@@ -688,45 +617,42 @@ private fun SuggestionList(
 }
 
 /**
- * One-tap fill for people who've recommended things before. Filters to
- * names starting with what's been typed; disappears once the field holds
- * an exact match.
+ * People who've recommended things before, matching what's been typed so
+ * far (start of any word in their name). Hidden until something is typed,
+ * and once the field holds an exact match.
  */
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun RecommenderChips(all: List<String>, current: String, onPick: (String) -> Unit) {
-    val typed = current.trim()
-    if (all.any { it.equals(typed, ignoreCase = true) }) return
-    val shown = all
-        .filter { typed.isEmpty() || it.startsWith(typed, ignoreCase = true) }
-        .take(MAX_RECOMMENDER_CHIPS)
-    if (shown.isEmpty()) return
-    FlowRow(
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
-        modifier = Modifier.padding(top = 8.dp),
-    ) {
-        shown.forEach { name ->
-            Surface(
-                shape = RoundedCornerShape(10.dp),
-                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+private fun RecommenderSuggestions(all: List<String>, typed: String, onPick: (String) -> Unit) {
+    val query = typed.trim()
+    if (query.isEmpty() || all.any { it.equals(query, ignoreCase = true) }) return
+    val matches = all.filter { name ->
+        name.split(' ').any { it.startsWith(query, ignoreCase = true) } || name.startsWith(query, ignoreCase = true)
+    }.take(MAX_RECOMMENDER_SUGGESTIONS)
+    if (matches.isEmpty()) return
+    Column(modifier = Modifier.padding(top = 4.dp)) {
+        matches.forEach { name ->
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
+                    .fillMaxWidth()
                     .clip(RoundedCornerShape(10.dp))
-                    .clickable { onPick(name) },
+                    .clickable { onPick(name) }
+                    .padding(horizontal = 8.dp, vertical = 10.dp),
             ) {
-                Text(
-                    text = name,
-                    style = MaterialTheme.typography.labelLarge,
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                Icon(
+                    Icons.Outlined.Person,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(18.dp),
                 )
+                Spacer(Modifier.width(10.dp))
+                Text(name, style = MaterialTheme.typography.bodyMedium)
             }
         }
     }
 }
 
-private const val MAX_RECOMMENDER_CHIPS = 8
-
-/** Wrap of shelf pills (accent dot + name), plus "None". */
+/** Wrap of genre pills (accent dot + name), plus "None". */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun ShelfChips(library: Library, selectedId: String?, onSelect: (String?) -> Unit) {
@@ -807,28 +733,5 @@ private fun DateRow(label: String, epochDay: Long?, onClick: () -> Unit) {
                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
             )
         }
-    }
-}
-
-@Composable
-private fun CoverRow(coverUrl: String, onRemove: () -> Unit) {
-    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-        AsyncImage(
-            model = coverUrl,
-            contentDescription = "Cover",
-            contentScale = ContentScale.Crop,
-            modifier = Modifier
-                .size(36.dp, 50.dp)
-                .clip(RoundedCornerShape(6.dp))
-                .background(MaterialTheme.colorScheme.surfaceContainerHighest),
-        )
-        Spacer(Modifier.width(12.dp))
-        Text(
-            text = "Cover from Open Library",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.weight(1f),
-        )
-        TextButton(onClick = onRemove) { Text("Remove") }
     }
 }

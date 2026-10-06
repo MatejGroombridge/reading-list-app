@@ -55,9 +55,9 @@ private sealed interface ShelfDialog {
 }
 
 /**
- * Add, rename, restyle, reorder and delete shelves. Reordering is up/down
- * arrows (agent.md §10.7.12) — shelf order drives the filter chips, the
- * editor's shelf picker and "Group by Shelf".
+ * Add, rename, restyle, reorder and delete genres (stored as "shelves").
+ * Reordering is up/down arrows (agent.md §10.7.12) — order drives the
+ * filter chips, the editor's genre picker and "Group by Genre".
  */
 @Composable
 fun ShelvesScreen(
@@ -73,15 +73,15 @@ fun ShelvesScreen(
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
-            BackTopBar(title = "Shelves", onBack = onBack) {
+            BackTopBar(title = "Genres", onBack = onBack) {
                 IconButton(onClick = { dialog = ShelfDialog.Create }) {
-                    Icon(Icons.Outlined.Add, contentDescription = "New shelf")
+                    Icon(Icons.Outlined.Add, contentDescription = "New genre")
                 }
             }
         },
     ) { padding ->
         if (shelves.isEmpty()) {
-            EmptyState("No shelves.\nTap + to make one.", Modifier.padding(padding))
+            EmptyState("No genres.\nTap + to make one.", Modifier.padding(padding))
             return@Scaffold
         }
         LazyColumn(
@@ -162,8 +162,8 @@ fun ShelvesScreen(
                 title = { Text("Delete “${d.shelf.name}”?") },
                 text = {
                     Text(
-                        if (n == 0) "The shelf is empty."
-                        else "Its ${countLabel(n)} stay on your list, just without a shelf.",
+                        if (n == 0) "Nothing is in this genre."
+                        else "Its ${countLabel(n)} stay on your list, just without a genre.",
                     )
                 },
                 confirmButton = {
@@ -194,10 +194,10 @@ private fun ShelfEditorDialog(
         onDismissRequest = onDismiss,
         title = {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(if (existing == null) "New Shelf" else "Edit Shelf", modifier = Modifier.weight(1f))
+                Text(if (existing == null) "New Genre" else "Edit Genre", modifier = Modifier.weight(1f))
                 if (onDelete != null) {
                     IconButton(onClick = onDelete) {
-                        Icon(Icons.Outlined.DeleteOutline, contentDescription = "Delete shelf", tint = MaterialTheme.colorScheme.error)
+                        Icon(Icons.Outlined.DeleteOutline, contentDescription = "Delete genre", tint = MaterialTheme.colorScheme.error)
                     }
                 }
             }

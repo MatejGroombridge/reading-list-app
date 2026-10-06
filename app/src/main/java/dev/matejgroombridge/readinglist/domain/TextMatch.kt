@@ -63,7 +63,7 @@ object TextMatch {
         val words = normalize(query).split(' ').filter { it.isNotEmpty() }
         if (words.isEmpty()) return true
         val haystack = normalize(
-            listOf(book.title, book.author, book.recommendedBy, book.reason, book.notes, book.review)
+            listOf(book.title, book.author, book.recommendedBy, book.reason, book.review)
                 .joinToString(" "),
         )
         return words.all { it in haystack }
