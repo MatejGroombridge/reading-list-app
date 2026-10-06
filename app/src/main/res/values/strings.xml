@@ -1,3 +1,7 @@
 <resources>
     <string name="app_name">Reading List</string>
+    <string name="quick_add_label">Add to Reading List</string>
+    <string name="shortcut_add_short">Add a book</string>
+    <string name="shortcut_add_long">Add to Reading List</string>
+    <string name="widget_description">What you\'re reading now, plus a quick way to add the next one.</string>
 </resources>

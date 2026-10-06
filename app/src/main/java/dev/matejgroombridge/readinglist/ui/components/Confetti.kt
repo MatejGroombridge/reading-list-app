@@ -14,7 +14,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.unit.dp
-import dev.matejgroombridge.readinglist.ui.theme.BookColors
+import dev.matejgroombridge.readinglist.ui.theme.ShelfColors
 import kotlinx.coroutines.delay
 import kotlin.math.PI
 import kotlin.math.cos
@@ -147,7 +147,7 @@ private data class Particle(
 )
 
 private fun generateParticles(n: Int): List<Particle> {
-    val palette = BookColors.palette.map { it.accent }
+    val palette = ShelfColors.palette.map { it.accent }
     return List(n) {
         // Wider launch spread (almost 180° fan) and stronger initial speed
         // so confetti shoots upward and outward across most of the screen.

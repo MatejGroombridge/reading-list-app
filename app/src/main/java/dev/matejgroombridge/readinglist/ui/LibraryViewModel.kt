@@ -7,360 +7,205 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import dev.matejgroombridge.readinglist.data.model.Book
-import dev.matejgroombridge.readinglist.data.model.Genre
-import dev.matejgroombridge.readinglist.data.model.Genres
-import dev.matejgroombridge.readinglist.data.model.RecSource
-import dev.matejgroombridge.readinglist.data.model.RecSources
-import dev.matejgroombridge.readinglist.data.model.ShelfStatus
-import dev.matejgroombridge.readinglist.data.network.OpenLibraryApi
-import dev.matejgroombridge.readinglist.data.repository.BookRepository
-import dev.matejgroombridge.readinglist.data.settings.Settings
-import dev.matejgroombridge.readinglist.data.settings.SettingsRepository
-import dev.matejgroombridge.readinglist.data.settings.ShelfSort
+import dev.matejgroombridge.readinglist.data.model.ItemKind
+import dev.matejgroombridge.readinglist.data.model.Library
+import dev.matejgroombridge.readinglist.data.model.ReadingStatus
+import dev.matejgroombridge.readinglist.data.model.Shelf
+import dev.matejgroombridge.readinglist.data.network.BookLookup
+import dev.matejgroombridge.readinglist.data.network.BookSuggestion
+import dev.matejgroombridge.readinglist.data.repository.ImportSummary
+import dev.matejgroombridge.readinglist.data.repository.LibraryRepository
+import dev.matejgroombridge.readinglist.domain.TextMatch
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 
-/** One genre heading plus the books filed under it. */
-data class GenreSection(
-    val genre: Genre,
-    val books: List<Book>,
-)
-
-/** Headline numbers for the Read screen. */
-data class ReadStats(
-    val booksRead: Int = 0,
-    val pagesRead: Int = 0,
-    val readThisYear: Int = 0,
-    val averageRating: Double = 0.0,
-    val topGenre: Genre? = null,
-)
-
 /**
- * Active filters on the Library screen.
- *
- * @param query      Free text matched against title and author.
- * @param sourceKind When set, limits the shelf to books from one
- *                   recommendation source — "show me everything I got from
- *                   YouTube".
+ * Snapshot of the library for the UI. The per-status lists are computed
+ * once per emission here so the three pager pages don't each re-filter.
  */
-data class ShelfFilter(
-    val query: String = "",
-    val sourceKind: String? = null,
-) {
-    val isActive: Boolean get() = query.isNotBlank() || sourceKind != null
-}
-
 data class LibraryUiState(
-    /** Books currently being read — pinned above the shelf. */
-    val reading: List<Book> = emptyList(),
-    /** Want-to-read books, grouped and sorted for display. */
-    val sections: List<GenreSection> = emptyList(),
-    /** Total want-to-read books before filtering. */
-    val wantToReadCount: Int = 0,
-    /** Want-to-read books remaining after the active filter. */
-    val filteredCount: Int = 0,
-    val filter: ShelfFilter = ShelfFilter(),
-    /**
-     * Recommendation sources actually present on the shelf, so the filter row
-     * only offers buckets that would return something.
-     */
-    val availableSources: List<RecSource> = emptyList(),
-    /** The priority queue, in user order. */
-    val upNext: List<Book> = emptyList(),
-    val read: List<Book> = emptyList(),
-    val stats: ReadStats = ReadStats(),
+    val library: Library = Library(),
+    /** False until the first DataStore read lands — avoids an empty-state flash on launch. */
+    val loaded: Boolean = false,
     val todayEpochDay: Long = LocalDate.now().toEpochDay(),
 ) {
-    val isEmpty: Boolean get() = reading.isEmpty() && sections.isEmpty() && read.isEmpty()
+    val active: List<Book> = library.books.filterNot { it.archived }
+    val toRead: List<Book> = active.filter { it.status == ReadingStatus.WantToRead }
+    val reading: List<Book> = active.filter { it.status == ReadingStatus.Reading }
+    val abandoned: List<Book> = active.filter { it.status == ReadingStatus.Abandoned }
+    val archived: List<Book> = library.books.filter { it.archived }
+    val recommenders: List<String> = library.recommenders()
+
+    fun book(id: String): Book? = library.books.firstOrNull { it.id == id }
 }
 
-/**
- * Owns the user's shelf: the grouping/sorting that turns a flat book list
- * into the Library, Up Next and Read screens, plus every mutation the UI can
- * trigger.
- *
- * Grouping lives here rather than in the composables because it depends on
- * both the shelf and user settings, and recomputing it per recomposition
- * would be wasteful — [uiState] recombines only when one of those actually
- * changes.
- */
+/** Progress of the "Fetch Missing Details" job. */
+data class EnrichProgress(
+    val done: Int,
+    val total: Int,
+    val updated: Int,
+    val finished: Boolean = false,
+)
+
 class LibraryViewModel(
-    private val repository: BookRepository,
-    settingsRepository: SettingsRepository,
+    private val repository: LibraryRepository,
+    private val lookup: BookLookup = BookLookup(),
 ) : ViewModel() {
 
-    private val today: Long get() = LocalDate.now().toEpochDay()
-
-    /**
-     * Set when a book is marked read, so the screen can fire confetti. The UI
-     * consumes it immediately; it exists as state rather than a callback so a
-     * finish triggered from the detail sheet still celebrates after the sheet
-     * closes.
-     */
-    private val _celebrate = MutableStateFlow(false)
-    val celebrate: StateFlow<Boolean> = _celebrate.asStateFlow()
-
-    private val _filter = MutableStateFlow(ShelfFilter())
-
-    val uiState: StateFlow<LibraryUiState> =
-        combine(repository.books, settingsRepository.settings, _filter) { books, settings, filter ->
-            buildState(books, settings, filter)
-        }.stateIn(
+    val uiState: StateFlow<LibraryUiState> = repository.library
+        .map { LibraryUiState(library = it, loaded = true) }
+        .stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5_000),
             initialValue = LibraryUiState(),
         )
 
-    private fun buildState(
-        books: List<Book>,
-        settings: Settings,
-        filter: ShelfFilter,
-    ): LibraryUiState {
-        val wantToRead = books.filter { it.status == ShelfStatus.WantToRead }
-        val filtered = wantToRead.filter { it.matches(filter) }
-        val read = books.filter { it.status == ShelfStatus.Read }
-            // Most recently finished first — the Read screen reads as a diary.
-            .sortedWith(compareByDescending<Book> { it.finishedAtEpochDay ?: 0L }.thenBy { it.title })
-
-        return LibraryUiState(
-            reading = books.filter { it.status == ShelfStatus.Reading }
-                .filter { it.matches(filter) }
-                .sortedBy { it.startedAtEpochDay ?: Long.MAX_VALUE },
-            sections = buildSections(filtered, settings),
-            wantToReadCount = wantToRead.size,
-            filteredCount = filtered.size,
-            filter = filter,
-            availableSources = availableSources(books),
-            upNext = books.filter { it.priorityRank != null }.sortedBy { it.priorityRank },
-            read = read,
-            stats = buildStats(read),
-            todayEpochDay = today,
-        )
+    fun addBook(book: Book) {
+        viewModelScope.launch { repository.addBook(book) }
     }
 
-    /**
-     * Recommendation sources present on the unfinished shelf, in catalogue
-     * order. Offering a chip that filters to nothing is worse than offering
-     * no chip, so this is derived from the data rather than the full
-     * catalogue.
-     */
-    private fun availableSources(books: List<Book>): List<RecSource> {
-        val present = books
-            .filter { it.status != ShelfStatus.Read }
-            .map { it.recSourceKind }
-            .toSet()
-        return RecSources.catalog.filter { it.key in present }
+    fun addBooks(books: List<Book>) {
+        viewModelScope.launch { repository.addBooks(books) }
     }
 
-    /**
-     * Splits want-to-read books into display sections.
-     *
-     * With grouping off the whole shelf becomes one unnamed section, which
-     * keeps the screen's rendering path identical either way.
-     */
-    private fun buildSections(books: List<Book>, settings: Settings): List<GenreSection> {
-        if (books.isEmpty()) return emptyList()
-        val sorted = books.sortedWith(comparatorFor(settings.shelfSort))
-
-        if (!settings.groupByGenre) {
-            return listOf(GenreSection(FLAT_GENRE, sorted))
-        }
-
-        val grouped = sorted.groupBy { it.genreKey }
-            .map { (key, entries) -> GenreSection(Genres.entry(key), entries) }
-            .sortedBy { Genres.sortIndex(it.genre.key) }
-
-        if (!settings.mergeSmallSections) return grouped
-
-        // Fold every one-book genre into a single trailing section so a
-        // varied list doesn't fragment into a dozen headings with one book
-        // under each. Unsorted stays separate — it means something different
-        // ("we couldn't tell") and the user acts on it differently.
-        val (singles, rest) = grouped.partition {
-            it.books.size == 1 && it.genre.key != Genres.UNSORTED_KEY
-        }
-        if (singles.size < 2) return grouped
-
-        val merged = GenreSection(
-            genre = ODDS_AND_ENDS,
-            books = singles.flatMap { it.books }.sortedWith(comparatorFor(settings.shelfSort)),
-        )
-        val unsortedLast = rest.sortedBy { Genres.sortIndex(it.genre.key) }
-        return unsortedLast + merged
+    fun updateBook(id: String, transform: (Book) -> Book) {
+        viewModelScope.launch { repository.updateBook(id, transform) }
     }
 
-    private fun comparatorFor(sort: ShelfSort): Comparator<Book> = when (sort) {
-        ShelfSort.RecentlyAdded ->
-            compareByDescending<Book> { it.addedAtEpochDay }.thenBy { it.title.lowercase() }
-        ShelfSort.Title ->
-            compareBy { it.title.sortableTitle() }
-        ShelfSort.Author ->
-            compareBy<Book> { it.authors.firstOrNull()?.lowercase() ?: "￿" }
-                .thenBy { it.title.lowercase() }
-        // Unknown page counts sort last: "shortest first" is for picking a
-        // quick read, and a book of unknown length isn't a candidate.
-        ShelfSort.Shortest ->
-            compareBy<Book> { it.pageCount ?: Int.MAX_VALUE }.thenBy { it.title.lowercase() }
+    fun setStatus(id: String, status: ReadingStatus) {
+        viewModelScope.launch { repository.setStatus(id, status) }
     }
 
-    private fun buildStats(read: List<Book>): ReadStats {
-        if (read.isEmpty()) return ReadStats()
-        val thisYearStart = LocalDate.now().withDayOfYear(1).toEpochDay()
-        val rated = read.filter { it.rating > 0 }
-        val topGenreKey = read.groupingBy { it.genreKey }.eachCount()
-            .maxByOrNull { it.value }?.key
-
-        return ReadStats(
-            booksRead = read.size,
-            pagesRead = read.sumOf { it.pageCount ?: 0 },
-            readThisYear = read.count { (it.finishedAtEpochDay ?: 0L) >= thisYearStart },
-            averageRating = if (rated.isEmpty()) 0.0 else rated.sumOf { it.rating }.toDouble() / rated.size,
-            topGenre = topGenreKey?.let { Genres.entry(it) },
-        )
-    }
-
-    // ── Filtering ────────────────────────────────────────────────
-
-    fun setFilterQuery(query: String) {
-        _filter.value = _filter.value.copy(query = query)
-    }
-
-    /** Passing the already-selected source clears the filter, so the chip toggles. */
-    fun setSourceFilter(sourceKind: String?) {
-        val current = _filter.value.sourceKind
-        _filter.value = _filter.value.copy(
-            sourceKind = if (sourceKind == current) null else sourceKind,
-        )
-    }
-
-    fun clearFilter() {
-        _filter.value = ShelfFilter()
-    }
-
-    // ── Mutations ────────────────────────────────────────────────
-
-    fun add(book: Book) {
-        viewModelScope.launch { repository.add(book, today) }
-    }
-
-    fun remove(bookId: String) {
-        viewModelScope.launch { repository.remove(bookId) }
-    }
-
-    fun setStatus(bookId: String, status: ShelfStatus) {
+    /** Marks [id] read, recording the optional rating and takeaways from the Finished dialog. */
+    fun finish(id: String, finishedOn: Long, rating: Int, review: String) {
         viewModelScope.launch {
-            repository.setStatus(bookId, status, today)
-            if (status == ShelfStatus.Read) _celebrate.value = true
-        }
-    }
-
-    /** Called by the screen once the confetti burst has been kicked off. */
-    fun consumeCelebration() {
-        _celebrate.value = false
-    }
-
-    fun setRating(bookId: String, rating: Int) {
-        viewModelScope.launch { repository.setRating(bookId, rating) }
-    }
-
-    fun setRecSource(bookId: String, source: String, kind: String) {
-        viewModelScope.launch { repository.setRecSource(bookId, source, kind) }
-    }
-
-    fun setNotes(bookId: String, notes: String) {
-        viewModelScope.launch { repository.setNotes(bookId, notes) }
-    }
-
-    /**
-     * Tops up a book from the work endpoint when its detail sheet is opened:
-     * the description if we don't hold one, and subject tags if the search
-     * result arrived without any (which would otherwise leave the book stuck
-     * in Unsorted). One request, only when something is actually missing.
-     *
-     * Silent on failure — the sheet renders fine without a blurb, and an
-     * error toast for optional flavour text would be noise.
-     */
-    fun ensureDetail(book: Book) {
-        val needsDescription = book.description.isBlank()
-        val needsSubjects = book.subjects.isEmpty()
-        if (!needsDescription && !needsSubjects) return
-        viewModelScope.launch {
-            val detail = OpenLibraryApi.workDetail(book.id) ?: return@launch
-            if (needsDescription) repository.cacheDescription(book.id, detail.descriptionText)
-            if (needsSubjects) repository.backfillSubjects(book.id, detail.subjects.orEmpty())
-        }
-    }
-
-    fun setGenreOverride(bookId: String, genreKey: String?) {
-        viewModelScope.launch { repository.setGenreOverride(bookId, genreKey) }
-    }
-
-    fun setPrioritised(bookId: String, prioritised: Boolean) {
-        viewModelScope.launch { repository.setPrioritised(bookId, prioritised) }
-    }
-
-    fun movePriority(bookId: String, delta: Int) {
-        viewModelScope.launch { repository.movePriority(bookId, delta) }
-    }
-
-    fun movePriorityToTop(bookId: String) {
-        viewModelScope.launch { repository.movePriorityToTop(bookId) }
-    }
-
-    suspend fun reclassifyAll(): Int = repository.reclassifyAll()
-
-    suspend fun exportJson(): String? = runCatching { repository.exportJson() }.getOrNull()
-
-    suspend fun importJson(rawJson: String): Int? = repository.importJson(rawJson)
-
-    companion object {
-        /** Stand-in heading used when genre grouping is switched off. */
-        private val FLAT_GENRE = Genre("all", "All Books", "fog")
-
-        /** Display-only bucket for merged one-book genres; never persisted. */
-        private val ODDS_AND_ENDS = Genre("odds-ends", "Odds & Ends", "fog")
-
-        fun factory(application: Application): ViewModelProvider.Factory = viewModelFactory {
-            initializer {
-                LibraryViewModel(
-                    repository = BookRepository(application.applicationContext),
-                    settingsRepository = SettingsRepository(application.applicationContext),
-                )
+            repository.updateBook(id) { b ->
+                b.withStatus(ReadingStatus.Read, LocalDate.now().toEpochDay(), finishedOn)
+                    .copy(rating = rating.coerceIn(0, 5), review = review.trim().ifEmpty { b.review })
             }
         }
     }
-}
 
-/**
- * Whether a book survives the active filter.
- *
- * The text query also matches the recommendation note, so searching
- * "struthless" surfaces every book from that channel even when the source
- * bucket is just "YouTube".
- */
-private fun Book.matches(filter: ShelfFilter): Boolean {
-    if (filter.sourceKind != null && recSourceKind != filter.sourceKind) return false
-    val query = filter.query.trim()
-    if (query.isEmpty()) return true
-    return title.contains(query, ignoreCase = true) ||
-        authors.any { it.contains(query, ignoreCase = true) } ||
-        recSource.contains(query, ignoreCase = true)
-}
-
-/**
- * Title with a leading article dropped, so "The Dispossessed" files under D
- * where a reader would look for it rather than under T.
- */
-private fun String.sortableTitle(): String {
-    val lower = lowercase().trim()
-    for (article in listOf("the ", "a ", "an ")) {
-        if (lower.startsWith(article)) return lower.removePrefix(article)
+    fun setProgress(id: String, page: Int) {
+        viewModelScope.launch { repository.setProgress(id, page) }
     }
-    return lower
+
+    fun setRating(id: String, rating: Int) = updateBook(id) { it.copy(rating = rating.coerceIn(0, 5)) }
+
+    fun toggleUpNext(id: String) = updateBook(id) { it.copy(upNext = !it.upNext) }
+
+    fun setArchived(id: String, archived: Boolean) = updateBook(id) { it.copy(archived = archived, upNext = false) }
+
+    fun deleteBook(id: String) {
+        viewModelScope.launch { repository.deleteBook(id) }
+    }
+
+    fun addShelf(shelf: Shelf) {
+        viewModelScope.launch { repository.addShelf(shelf) }
+    }
+
+    fun updateShelf(shelf: Shelf) {
+        viewModelScope.launch { repository.updateShelf(shelf) }
+    }
+
+    fun deleteShelf(id: String) {
+        viewModelScope.launch { repository.deleteShelf(id) }
+    }
+
+    fun moveShelf(id: String, delta: Int) {
+        viewModelScope.launch { repository.moveShelf(id, delta) }
+    }
+
+    fun setNotes(notes: String) {
+        viewModelScope.launch { repository.setNotes(notes) }
+    }
+
+    /** Online suggestions for the editor. Empty on any failure. */
+    suspend fun search(query: String): List<BookSuggestion> = lookup.search(query)
+
+    suspend fun exportJson(): String? = runCatching { repository.exportJson() }.getOrNull()
+
+    fun parseImport(raw: String): Library? = repository.parseImport(raw)
+
+    suspend fun importLibrary(library: Library, replace: Boolean): ImportSummary =
+        repository.importLibrary(library, replace)
+
+    // --- Fetch Missing Details --------------------------------------------
+
+    private val _enrich = MutableStateFlow<EnrichProgress?>(null)
+    val enrich: StateFlow<EnrichProgress?> = _enrich.asStateFlow()
+    private var enrichJob: Job? = null
+
+    /** Books and series that are missing a cover, page count or year. */
+    fun enrichCandidates(library: Library = uiState.value.library): List<Book> = library.books.filter {
+        !it.archived && it.title.isNotBlank() &&
+            (it.kind == ItemKind.Book || it.kind == ItemKind.Series) &&
+            (it.coverUrl.isBlank() || it.pageCount == 0 || it.publishedYear == 0)
+    }
+
+    /**
+     * Walks [enrichCandidates] one at a time, applying only confident Open
+     * Library matches (see [BookLookup.confidentMatch]). What the user typed
+     * is never overwritten except to tidy a title's capitalisation or fill a
+     * blank author. Paced at well under one request a second — this is a
+     * free community API.
+     *
+     * Runs in the ViewModel scope, so it keeps going if the user leaves
+     * Settings; the activity-scoped ViewModel owns it.
+     */
+    fun startEnrich() {
+        if (enrichJob?.isActive == true) return
+        enrichJob = viewModelScope.launch {
+            val candidates = enrichCandidates(repository.library.first())
+            var updated = 0
+            _enrich.value = EnrichProgress(0, candidates.size, 0)
+            candidates.forEachIndexed { i, book ->
+                val match = lookup.confidentMatch(book.title, book.author)
+                if (match != null) {
+                    var changed = false
+                    repository.updateBook(book.id) { b ->
+                        val next = b.copy(
+                            title = if (b.title != match.title && TextMatch.titleKey(b.title) == TextMatch.titleKey(match.title)) match.title else b.title,
+                            author = b.author.ifBlank { match.author },
+                            coverUrl = b.coverUrl.ifBlank { match.coverUrl },
+                            pageCount = if (b.pageCount > 0) b.pageCount else match.pageCount,
+                            publishedYear = if (b.publishedYear > 0) b.publishedYear else match.publishedYear,
+                        )
+                        changed = next != b
+                        next
+                    }
+                    if (changed) updated++
+                }
+                _enrich.value = EnrichProgress(i + 1, candidates.size, updated)
+                delay(ENRICH_DELAY_MS)
+            }
+            _enrich.value = EnrichProgress(candidates.size, candidates.size, updated, finished = true)
+        }
+    }
+
+    fun cancelEnrich() {
+        enrichJob?.cancel()
+        _enrich.value = _enrich.value?.copy(finished = true)
+    }
+
+    fun clearEnrichResult() {
+        if (enrichJob?.isActive != true) _enrich.value = null
+    }
+
+    companion object {
+        private const val ENRICH_DELAY_MS = 1_100L
+
+        fun factory(application: Application): ViewModelProvider.Factory = viewModelFactory {
+            initializer { LibraryViewModel(LibraryRepository(application.applicationContext)) }
+        }
+    }
 }

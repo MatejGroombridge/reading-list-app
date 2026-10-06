@@ -12,9 +12,8 @@
         <item name="android:windowDrawsSystemBarBackgrounds">true</item>
     </style>
 
-    <!-- Used by NfcCompletionActivity. Fully transparent so the activity can
-         either show a Compose overlay on top of the user's previous app or
-         finish silently with no visual disruption. -->
+    <!-- Used by QuickAddActivity. Fully transparent so the add dialog floats
+         over whichever app the user shared from. -->
     <style name="Theme.App.Transparent" parent="android:Theme.Material.NoActionBar">
         <item name="android:windowBackground">@android:color/transparent</item>
         <item name="android:windowIsTranslucent">true</item>

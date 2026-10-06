@@ -118,21 +118,20 @@ dependencies {
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.kotlinx.serialization.json)
 
-    // Book cover loading. Coil streams the cover JPEGs from
-    // covers.openlibrary.org and handles its own memory/disk cache, so the
-    // grid stays smooth without us managing bitmaps by hand.
-    implementation(libs.coil.compose)
-
-    // Open Library search. OkHttp engine because it's the best-supported
-    // one on Android; content negotiation wires kotlinx-serialization in
-    // so responses decode straight into our DTOs.
+    // Networking — Open Library search for title/author/cover suggestions.
     implementation(libs.ktor.client.core)
     implementation(libs.ktor.client.okhttp)
     implementation(libs.ktor.client.content.negotiation)
     implementation(libs.ktor.serialization.kotlinx.json)
 
-    // Unit tests for the genre classifier. Its rule table is exactly the kind
-    // of thing that regresses silently when a keyword is added, so it's worth
-    // pinning the behaviour down. Test-only — nothing here reaches the APK.
+    // Book covers. Coil handles the memory + disk cache for us.
+    implementation(libs.coil.compose)
+
+    // Home-screen widget — Glance lets us render the widget with a
+    // Compose-style API instead of hand-rolling RemoteViews.
+    implementation(libs.androidx.glance.appwidget)
+    implementation(libs.androidx.glance.material3)
+
+    // Unit tests for the pure-Kotlin parsing / matching / query logic.
     testImplementation(libs.junit)
 }

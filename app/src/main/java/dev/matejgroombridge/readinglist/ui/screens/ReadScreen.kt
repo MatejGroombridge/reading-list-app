@@ -1,143 +1,264 @@
 package dev.matejgroombridge.readinglist.ui.screens
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.CheckCircle
-import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material.icons.outlined.AutoStories
+import androidx.compose.material.icons.outlined.CalendarMonth
+import androidx.compose.material.icons.outlined.ExpandLess
+import androidx.compose.material.icons.outlined.ExpandMore
+import androidx.compose.material.icons.automirrored.outlined.LibraryBooks
+import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import dev.matejgroombridge.readinglist.ui.LibraryViewModel
-import dev.matejgroombridge.readinglist.ui.ReadStats
-import dev.matejgroombridge.readinglist.ui.components.BookRow
-import dev.matejgroombridge.readinglist.ui.components.CardCorner
-import dev.matejgroombridge.readinglist.ui.components.EmptyState
-import dev.matejgroombridge.readinglist.ui.components.SectionCaption
+import dev.matejgroombridge.readinglist.data.settings.Settings
+import dev.matejgroombridge.readinglist.domain.LibraryQueries
+import dev.matejgroombridge.readinglist.domain.ReadingStats
+import dev.matejgroombridge.readinglist.ui.LibraryUiState
+import dev.matejgroombridge.readinglist.ui.components.BookActions
+import dev.matejgroombridge.readinglist.ui.components.BookCard
+import dev.matejgroombridge.readinglist.ui.components.StatTile
+import dev.matejgroombridge.readinglist.ui.theme.ShelfColors
 import java.time.LocalDate
+import kotlin.math.floor
 
 /**
- * The finished shelf — a record of what's actually been read, with a stats
- * strip on top.
- *
- * Ordered most-recent-first so it reads as a diary of the reading year
- * rather than a static inventory.
+ * Finished books, grouped by the year they were finished, under a small
+ * stats header: the yearly goal (with whether you're on pace), headline
+ * counts and what shelves the reading came from. Abandoned books live in a
+ * collapsed "Didn't Finish" section at the bottom rather than vanishing.
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ReadScreen(
-    viewModel: LibraryViewModel,
+    state: LibraryUiState,
+    settings: Settings,
+    actions: BookActions,
     contentPadding: PaddingValues,
-    onOpenBook: (String) -> Unit,
+    onOpenSettings: () -> Unit,
 ) {
-    val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val sections = remember(state.library) { LibraryQueries.readSections(state.library) }
+    val stats = remember(state.library) { ReadingStats.from(state.library) }
+    val readCount = sections.sumOf { it.books.size }
+    var showAbandoned by rememberSaveable { mutableStateOf(false) }
 
-    Column(modifier = Modifier.fillMaxSize()) {
-        TopAppBar(
-            title = { Text("Read") },
-            colors = TopAppBarDefaults.topAppBarColors(
-                containerColor = MaterialTheme.colorScheme.background,
-            ),
-            windowInsets = WindowInsets(0, 0, 0, 0),
-            modifier = Modifier.padding(top = contentPadding.calculateTopPadding()),
-        )
-
-        if (state.read.isEmpty()) {
-            EmptyState(
-                icon = Icons.Outlined.CheckCircle,
-                title = "No finished books yet",
-                message = "Open a book and set its shelf to Read. " +
-                    "Everything you finish collects here with your rating.",
-            )
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(top = contentPadding.calculateTopPadding()),
+    ) {
+        PageHeader(title = "Read", subtitle = if (state.loaded && readCount > 0) countLabel(readCount) else null) {
+            IconButton(onClick = onOpenSettings) { Icon(Icons.Outlined.Settings, contentDescription = "Settings") }
+        }
+        if (state.loaded && readCount == 0 && state.abandoned.isEmpty()) {
+            EmptyState("Nothing finished yet.\nFinished books and your stats will show up here.")
             return@Column
         }
 
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(
-                start = 16.dp,
-                end = 16.dp,
-                top = 4.dp,
-                bottom = contentPadding.calculateBottomPadding() + 24.dp,
+                start = 20.dp,
+                end = 20.dp,
+                bottom = contentPadding.calculateBottomPadding() + 88.dp,
             ),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            item(key = "stats") { StatsStrip(state.stats) }
-            item(key = "finished-caption") { SectionCaption("Finished") }
-            items(state.read, key = { it.id }) { book ->
-                BookRow(
-                    book = book,
-                    onClick = { onOpenBook(book.id) },
-                    showGenre = true,
-                    showRating = true,
-                )
+            item(key = "stats") { StatsHeader(stats = stats, goal = settings.yearlyGoal) }
+
+            sections.forEach { section ->
+                item(key = "header_${section.key}") { ListSectionHeader(section.title.orEmpty(), section.books.size) }
+                items(section.books, key = { it.id }) { book ->
+                    BookCard(
+                        book = book,
+                        shelf = state.library.shelf(book.shelfId),
+                        showCovers = settings.showCovers,
+                        todayEpochDay = state.todayEpochDay,
+                        onClick = { actions.overview(book) },
+                        quickActions = { actions.quickActions(book) },
+                        modifier = Modifier.animateItem(),
+                    )
+                }
+            }
+
+            if (state.abandoned.isNotEmpty()) {
+                item(key = "abandoned_header") {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable { showAbandoned = !showAbandoned },
+                    ) {
+                        ListSectionHeader("Didn't Finish", state.abandoned.size, modifier = Modifier.weight(1f))
+                        Icon(
+                            if (showAbandoned) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
+                            contentDescription = if (showAbandoned) "Collapse" else "Expand",
+                            tint = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                }
+                if (showAbandoned) {
+                    items(state.abandoned, key = { it.id }) { book ->
+                        BookCard(
+                            book = book,
+                            shelf = state.library.shelf(book.shelfId),
+                            showCovers = settings.showCovers,
+                            todayEpochDay = state.todayEpochDay,
+                            onClick = { actions.overview(book) },
+                            quickActions = { actions.quickActions(book) },
+                            modifier = Modifier.animateItem(),
+                        )
+                    }
+                }
             }
         }
+    }
+}
+
+@Composable
+private fun StatsHeader(stats: ReadingStats, goal: Int) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        if (goal > 0) GoalCard(stats = stats, goal = goal)
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+            val accent = MaterialTheme.colorScheme.primary
+            StatTile("In ${stats.year}", stats.readThisYear.toString(), Icons.Outlined.CalendarMonth, accent, Modifier.weight(1f))
+            StatTile("All Time", stats.readAllTime.toString(), Icons.AutoMirrored.Outlined.LibraryBooks, accent, Modifier.weight(1f))
+            StatTile(
+                "Pages in ${stats.year}",
+                if (stats.pagesThisYear >= 10_000) "${stats.pagesThisYear / 1000}k" else stats.pagesThisYear.toString(),
+                Icons.Outlined.AutoStories,
+                accent,
+                Modifier.weight(1f),
+            )
+        }
+        if (stats.byShelf.isNotEmpty()) ShelfBreakdown(stats)
     }
 }
 
 /**
- * Three headline numbers plus the user's most-read genre.
- *
- * Pages is included alongside book count because a year of short novels and a
- * year of doorstops are very different reading years, and the count alone
- * flatters the former.
+ * Progress against the yearly goal plus a pace line: where you'd be today
+ * if the goal were spread evenly over the year.
  */
 @Composable
-private fun StatsStrip(stats: ReadStats) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            StatTile(
-                value = stats.booksRead.toString(),
-                label = "Books read",
-                modifier = Modifier.weight(1f),
+private fun GoalCard(stats: ReadingStats, goal: Int) {
+    val today = LocalDate.now()
+    val expected = floor(goal * today.dayOfYear.toDouble() / today.lengthOfYear()).toInt()
+    val diff = stats.readThisYear - expected
+    val pace = when {
+        stats.readThisYear >= goal -> "Goal reached"
+        diff > 0 -> "$diff ahead of pace"
+        diff == 0 -> "On pace"
+        else -> "${-diff} behind pace"
+    }
+    Surface(
+        shape = RoundedCornerShape(20.dp),
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.Bottom) {
+                Text(
+                    text = "${stats.readThisYear} of $goal books",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.weight(1f),
+                )
+                Text(pace, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Spacer(Modifier.height(10.dp))
+            LinearProgressIndicator(
+                progress = { (stats.readThisYear.toFloat() / goal).coerceIn(0f, 1f) },
+                strokeCap = StrokeCap.Round,
+                gapSize = 0.dp,
+                drawStopIndicator = {},
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(8.dp),
             )
-            StatTile(
-                value = stats.readThisYear.toString(),
-                label = "In ${LocalDate.now().year}",
-                modifier = Modifier.weight(1f),
-            )
-            StatTile(
-                value = if (stats.pagesRead > 0) formatPages(stats.pagesRead) else "—",
-                label = "Pages",
-                modifier = Modifier.weight(1f),
+            Spacer(Modifier.height(6.dp))
+            Text(
+                text = "${stats.year} reading goal",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        if (stats.topGenre != null || stats.averageRating > 0) {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                stats.topGenre?.let { genre ->
-                    StatTile(
-                        value = genre.label,
-                        label = "Most read",
-                        modifier = Modifier.weight(1f),
-                        valueStyle = ValueStyle.Compact,
+    }
+}
+
+@Composable
+private fun ShelfBreakdown(stats: ReadingStats) {
+    val top = stats.byShelf.take(MAX_SHELF_ROWS)
+    val max = top.maxOf { it.second }.coerceAtLeast(1)
+    Surface(
+        shape = RoundedCornerShape(20.dp),
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(
+                text = "BY SHELF",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.primary,
+                fontWeight = FontWeight.SemiBold,
+            )
+            top.forEach { (shelf, count) ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = shelf.name,
+                        style = MaterialTheme.typography.bodySmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(0.42f),
                     )
-                }
-                if (stats.averageRating > 0) {
-                    StatTile(
-                        value = String.format(java.util.Locale.US, "%.1f", stats.averageRating),
-                        label = "Avg rating",
-                        modifier = Modifier.weight(1f),
+                    Box(
+                        modifier = Modifier
+                            .weight(0.48f)
+                            .height(10.dp),
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth(count.toFloat() / max)
+                                .height(10.dp)
+                                .clip(RoundedCornerShape(5.dp))
+                                .background(ShelfColors.entry(shelf.colorKey).accent),
+                        )
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = count.toString(),
+                        style = MaterialTheme.typography.labelLarge,
+                        modifier = Modifier.weight(0.1f),
                     )
                 }
             }
@@ -145,51 +266,4 @@ private fun StatsStrip(stats: ReadStats) {
     }
 }
 
-private enum class ValueStyle { Large, Compact }
-
-@Composable
-private fun StatTile(
-    value: String,
-    label: String,
-    modifier: Modifier = Modifier,
-    valueStyle: ValueStyle = ValueStyle.Large,
-) {
-    Surface(
-        shape = RoundedCornerShape(CardCorner),
-        color = MaterialTheme.colorScheme.surfaceContainer,
-        modifier = modifier,
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 14.dp, horizontal = 8.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(2.dp),
-        ) {
-            Text(
-                text = value,
-                style = when (valueStyle) {
-                    ValueStyle.Large -> MaterialTheme.typography.headlineMedium
-                    ValueStyle.Compact -> MaterialTheme.typography.titleMedium
-                },
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                textAlign = TextAlign.Center,
-            )
-            Text(
-                text = label,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                textAlign = TextAlign.Center,
-            )
-        }
-    }
-}
-
-/** 12,430 → "12.4k", so the tile never has to shrink its type to fit. */
-private fun formatPages(pages: Int): String =
-    if (pages < 10_000) pages.toString()
-    else String.format(java.util.Locale.US, "%.1fk", pages / 1000.0)
+private const val MAX_SHELF_ROWS = 6

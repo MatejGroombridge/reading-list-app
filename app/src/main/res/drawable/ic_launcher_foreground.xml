@@ -1,17 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-    Launcher glyph: an open book, drawn in white at the centre of the
-    adaptive-icon viewport.
-
-    Geometry: two mirrored page shapes either side of a 6-unit spine gap at
-    x=54. The book spans x 27..81 and y 32..75 inside the 108x108 viewport,
-    which keeps it within the 66x66 adaptive-icon safe zone — OEM shape masks
-    (circle, squircle, teardrop) can't clip a page edge.
-
-    The outer corners are rounded and the bottom edge sweeps down toward the
-    spine so the pages read as "resting open" rather than as two flat slabs.
-    Single flat colour throughout, because this same vector is reused as the
-    themed-icon monochrome layer where any internal shading would be lost.
+    Launcher glyph: a minimal open book, two pages tilted up from a centre
+    spine, in the same flat white-on-#1B1B1F style as the family's default
+    9-dot icon. Drawn inside the centre 48x48 of the 108x108 viewport so
+    every OEM mask shape leaves it intact.
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
@@ -22,22 +14,10 @@
     <!-- Left page -->
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M51,41
-            C44,35 36,32.5 29,32.5
-            C27.8,32.5 27,33.4 27,34.6
-            L27,65.4
-            C27,66.6 27.8,67.5 29,67.5
-            C36,67.5 44,69.6 51,75
-            Z" />
+        android:pathData="M51,40.5 C45,36.5 38,35 31,35.5 L31,70 C38,69.5 45,71 51,75 Z" />
 
     <!-- Right page -->
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M57,41
-            C64,35 72,32.5 79,32.5
-            C80.2,32.5 81,33.4 81,34.6
-            L81,65.4
-            C81,66.6 80.2,67.5 79,67.5
-            C72,67.5 64,69.6 57,75
-            Z" />
+        android:pathData="M57,40.5 C63,36.5 70,35 77,35.5 L77,70 C70,69.5 63,71 57,75 Z" />
 </vector>

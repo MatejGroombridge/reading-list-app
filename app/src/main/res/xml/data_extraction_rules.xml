@@ -1,11 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- See backup_rules.xml: library + settings are kept, cover cache is not. -->
 <data-extraction-rules>
     <cloud-backup>
-        <exclude domain="file" path="datastore/" />
         <exclude domain="cache" />
     </cloud-backup>
     <device-transfer>
-        <exclude domain="file" path="datastore/" />
         <exclude domain="cache" />
     </device-transfer>
 </data-extraction-rules>

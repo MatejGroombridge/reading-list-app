@@ -1,14 +1,17 @@
 package dev.matejgroombridge.readinglist.ui
 
 import android.app.Application
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import dev.matejgroombridge.readinglist.data.settings.GroupBy
 import dev.matejgroombridge.readinglist.data.settings.Settings
 import dev.matejgroombridge.readinglist.data.settings.SettingsRepository
-import dev.matejgroombridge.readinglist.data.settings.ShelfSort
+import dev.matejgroombridge.readinglist.data.settings.SortOrder
+import dev.matejgroombridge.readinglist.notifications.ReminderScheduler
 import dev.matejgroombridge.readinglist.ui.theme.ThemeMode
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -16,6 +19,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 class SettingsViewModel(
+    private val appContext: Context,
     private val repository: SettingsRepository,
 ) : ViewModel() {
 
@@ -25,38 +29,35 @@ class SettingsViewModel(
         initialValue = Settings(),
     )
 
-    fun setThemeMode(mode: ThemeMode) {
-        viewModelScope.launch { repository.setThemeMode(mode) }
+    fun setThemeMode(mode: ThemeMode) = launch { repository.setThemeMode(mode) }
+    fun setAmoled(enabled: Boolean) = launch { repository.setAmoled(enabled) }
+    fun setShowCovers(enabled: Boolean) = launch { repository.setShowCovers(enabled) }
+    fun setYearlyGoal(goal: Int) = launch { repository.setYearlyGoal(goal) }
+    fun setCurrentReadsLimit(limit: Int) = launch { repository.setCurrentReadsLimit(limit) }
+    fun setSwipeToNavigate(enabled: Boolean) = launch { repository.setSwipeToNavigate(enabled) }
+    fun setOnlineLookup(enabled: Boolean) = launch { repository.setOnlineLookup(enabled) }
+    fun setGroupBy(groupBy: GroupBy) = launch { repository.setGroupBy(groupBy) }
+    fun setSortOrder(order: SortOrder) = launch { repository.setSortOrder(order) }
+
+    fun setReminderEnabled(enabled: Boolean) = launch {
+        repository.setReminderEnabled(enabled)
+        ReminderScheduler.reschedule(appContext)
     }
 
-    fun setAmoled(enabled: Boolean) {
-        viewModelScope.launch { repository.setAmoled(enabled) }
+    fun setReminderTime(time: String) = launch {
+        repository.setReminderTime(time)
+        ReminderScheduler.reschedule(appContext)
     }
 
-    fun setSwipeToNavigate(enabled: Boolean) {
-        viewModelScope.launch { repository.setSwipeToNavigate(enabled) }
-    }
-
-    fun setGroupByGenre(enabled: Boolean) {
-        viewModelScope.launch { repository.setGroupByGenre(enabled) }
-    }
-
-    fun setShelfSort(sort: ShelfSort) {
-        viewModelScope.launch { repository.setShelfSort(sort) }
-    }
-
-    fun setMergeSmallSections(enabled: Boolean) {
-        viewModelScope.launch { repository.setMergeSmallSections(enabled) }
-    }
-
-    fun setCelebrateFinishes(enabled: Boolean) {
-        viewModelScope.launch { repository.setCelebrateFinishes(enabled) }
+    private fun launch(block: suspend () -> Unit) {
+        viewModelScope.launch { block() }
     }
 
     companion object {
         fun factory(application: Application): ViewModelProvider.Factory = viewModelFactory {
             initializer {
-                SettingsViewModel(SettingsRepository(application.applicationContext))
+                val ctx = application.applicationContext
+                SettingsViewModel(ctx, SettingsRepository(ctx))
             }
         }
     }

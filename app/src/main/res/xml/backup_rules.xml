@@ -1,5 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+    Unlike the rest of the app family, the reading list is backed up: years
+    of recommendations shouldn't disappear with a lost phone. Only the cache
+    (Coil's cover images, re-downloadable) is excluded.
+-->
 <full-backup-content>
-    <exclude domain="file" path="datastore/" />
     <exclude domain="cache" />
 </full-backup-content>

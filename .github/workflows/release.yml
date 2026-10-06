@@ -100,7 +100,7 @@ jobs:
           # time — leaving this as the auto-derived repo slug usually works,
           # but a curated DISPLAY_NAME reads better.
           DISPLAY_NAME: "Reading List"
-          DESCRIPTION:  "Books you want to read, sorted into genres automatically."
+          DESCRIPTION:  "Capture book recommendations — who suggested them and why — and track what you read."
           CATEGORY:     "Personal"
           VC:           ${{ steps.meta.outputs.version_code }}
           VN:           ${{ steps.meta.outputs.version_name }}

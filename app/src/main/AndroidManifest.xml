@@ -2,10 +2,18 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- Book search + cover images come from the Open Library API, so this is
-         the only permission the app needs. Everything else (the shelf, notes,
-         priority order) lives on-device in DataStore. -->
+    <!-- Open Library search (title suggestions, "Fetch Missing Details")
+         and cover images. Everything still works offline; suggestions and
+         new covers just don't appear. -->
     <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- The daily reading reminder. POST_NOTIFICATIONS is requested when the
+         reminder is first switched on; the others keep the alarm exact and
+         let it survive reboots. If exact alarms are unavailable the scheduler
+         falls back to inexact ones. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
 
     <application
         android:allowBackup="true"
@@ -22,12 +30,69 @@
         <activity
             android:name=".MainActivity"
             android:exported="true"
+            android:launchMode="singleTop"
             android:theme="@style/Theme.App.Main">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Quick add, floated over whatever app the user is in. Transparent
+             so only the dialog shows; excluded from recents and history so it
+             never lingers once the dialog closes. -->
+        <activity
+            android:name=".QuickAddActivity"
+            android:exported="true"
+            android:label="@string/quick_add_label"
+            android:noHistory="true"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:launchMode="singleTask"
+            android:windowSoftInputMode="adjustResize"
+            android:theme="@style/Theme.App.Transparent">
+            <!-- Share sheet: links and text from any app. -->
+            <intent-filter android:label="@string/quick_add_label">
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+            <!-- Text-selection toolbar: highlight a title anywhere. -->
+            <intent-filter android:label="@string/quick_add_label">
+                <action android:name="android.intent.action.PROCESS_TEXT" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+            <!-- Launcher shortcut + widget "+" (explicit intents, no data). -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
+        <!-- Home-screen widget showing current reads. -->
+        <receiver
+            android:name=".widget.ReadingWidgetReceiver"
+            android:exported="true"
+            android:label="@string/app_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="dev.matejgroombridge.readinglist.WIDGET_REFRESH" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/reading_widget_info" />
+        </receiver>
+
+        <!-- Fires the daily reminder and re-arms it; restores it after a
+             reboot. Not exported — only the system invokes it. -->
+        <receiver
+            android:name=".notifications.ReminderReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
 
     </application>
 

@@ -1,115 +1,144 @@
 package dev.matejgroombridge.readinglist.data.model
 
 import kotlinx.serialization.Serializable
+import java.util.UUID
 
 /**
- * Where a book currently sits on the shelf.
- *
- * Serialised by name, so entries may be appended but never reordered or
- * renamed — see the data-migration note on [Book].
+ * Where an item sits in the reading pipeline. Serialised by name, so never
+ * rename an entry — only append new ones.
  */
 @Serializable
-enum class ShelfStatus {
-    /** On the list, not started. The default landing state after a search. */
-    WantToRead,
-
-    /** Started but not finished. Surfaces in its own strip above the shelf. */
-    Reading,
-
-    /** Finished. Moves to the Read screen and can carry a rating. */
-    Read,
+enum class ReadingStatus(val label: String) {
+    WantToRead("To Read"),
+    Reading("Reading"),
+    Read("Read"),
+    Abandoned("Didn't Finish"),
 }
 
 /**
- * One book on the user's list.
+ * Not everything on a reading list is a single book. The Notion page this
+ * app replaces had authors to explore ("all robert greene books"), topics
+ * ("choose one 1800s tycoon to study"), articles and other people's lists.
+ * Giving them a kind keeps them on the same list without pretending they're
+ * books.
+ */
+@Serializable
+enum class ItemKind(val label: String, val plural: String) {
+    Book("Book", "Books"),
+    Series("Series", "Series"),
+    Author("Author", "Authors"),
+    Topic("Topic", "Topics"),
+    Article("Article", "Articles"),
+    List("Reading List", "Reading Lists"),
+}
+
+@Serializable
+enum class BookFormat(val label: String) {
+    Any("Any"),
+    Print("Print"),
+    Ebook("Ebook"),
+    Audio("Audio"),
+}
+
+/**
+ * One item on the reading list.
  *
- * Schema notes (mirrors the family convention):
+ * Schema notes (same contract as the rest of the app family):
  *  - The repository decodes with `ignoreUnknownKeys = true` and every field
- *    below has a default, so books saved by an older build always load.
- *  - [id] is the Open Library *work* key with the `/works/` prefix stripped
- *    (e.g. `OL45804W`). Work-level rather than edition-level, so the same
- *    novel found via a paperback and a hardback dedupes to one entry.
+ *    except [title] has a default, so older exports keep loading as fields
+ *    are added.
+ *  - Dates the user thinks about as days ([startedOn], [finishedOn]) are
+ *    `LocalDate.toEpochDay()` values. [addedAt] is epoch millis so items
+ *    added on the same day still sort by insertion.
  *
- * @param id               Open Library work id, e.g. `OL45804W`. Stable + unique.
- * @param title            Book title as returned by the search API.
- * @param authors          Author names; may be empty for obscure records.
- * @param coverId          Open Library cover id, used to build a cover URL.
- * @param firstPublishYear Year of first publication, when known.
- * @param pageCount        Median page count across editions, when known.
- * @param subjects         Raw Open Library subjects, capped at [MAX_SUBJECTS].
- *                         Retained so books can be re-classified if the
- *                         genre rules improve, without re-hitting the network.
- * @param autoGenreKey     Genre the classifier picked at add time.
- * @param genreOverride    Genre the user picked by hand; wins over the auto
- *                         one. Null means "trust the classifier".
+ * @param recommendedBy Who or what suggested it ("Angela", "Modern Wisdom").
+ * @param reason        Why it was recommended — the context that's easy to
+ *                      forget and the main thing this app exists to keep.
+ * @param notes         Anything else: edition tips, reading advice, spoilers
+ *                      to avoid.
+ * @param addedAt       Epoch millis, or 0 when unknown (e.g. imported items
+ *                      whose original date was never written down).
+ * @param upNext        Pinned to the top of To Read.
+ * @param toAcquire     "Need a copy" — still has to be bought or downloaded.
+ * @param rating        0 = unrated, otherwise 1..5.
+ * @param review        Takeaways written when finishing.
  */
 @Serializable
 data class Book(
-    val id: String,
+    val id: String = UUID.randomUUID().toString(),
     val title: String,
-    val authors: List<String> = emptyList(),
-    val coverId: Long? = null,
-    val firstPublishYear: Int? = null,
-    val pageCount: Int? = null,
-    val description: String = "",
-    val subjects: List<String> = emptyList(),
-    val autoGenreKey: String = Genres.UNSORTED_KEY,
-    val genreOverride: String? = null,
-    val status: ShelfStatus = ShelfStatus.WantToRead,
-    val addedAtEpochDay: Long = 0L,
-    val startedAtEpochDay: Long? = null,
-    val finishedAtEpochDay: Long? = null,
-    /** 1..5 stars, or 0 when the user hasn't rated it. Only meaningful once read. */
-    val rating: Int = 0,
-    /**
-     * Free text for where the recommendation came from — the whole reason
-     * this app exists. "Struthless video on procrastination", "Dad", "that
-     * Huberman episode". Kept as prose rather than a structured reference
-     * because the useful detail is never the same shape twice.
-     */
-    val recSource: String = "",
-    /** Key into [RecSources]; drives the little badge shown next to [recSource]. */
-    val recSourceKind: String = RecSources.UNKNOWN_KEY,
-    /** The user's own notes on the book. */
+    val author: String = "",
+    val kind: ItemKind = ItemKind.Book,
+    val status: ReadingStatus = ReadingStatus.WantToRead,
+    val shelfId: String? = null,
+    val recommendedBy: String = "",
+    val reason: String = "",
     val notes: String = "",
-    /**
-     * Position on the Up Next list, or null when the book isn't on it.
-     * The repository renumbers these to a dense 0..n-1 range after every
-     * mutation, so gaps and duplicates can't accumulate.
-     */
-    val priorityRank: Int? = null,
+    val url: String = "",
+    val coverUrl: String = "",
+    val pageCount: Int = 0,
+    val currentPage: Int = 0,
+    val publishedYear: Int = 0,
+    val format: BookFormat = BookFormat.Any,
+    val upNext: Boolean = false,
+    val toAcquire: Boolean = false,
+    val rating: Int = 0,
+    val review: String = "",
+    val addedAt: Long = 0L,
+    val startedOn: Long? = null,
+    val finishedOn: Long? = null,
+    val archived: Boolean = false,
 ) {
-    /** The genre this book files under — a manual pick beats the classifier. */
-    val genreKey: String get() = genreOverride ?: autoGenreKey
+    /** 0..1, or null when there's no page count to measure against. */
+    val progress: Float?
+        get() = if (pageCount > 0) (currentPage.toFloat() / pageCount).coerceIn(0f, 1f) else null
 
-    val genre: Genre get() = Genres.entry(genreKey)
-
-    val isPrioritised: Boolean get() = priorityRank != null
-
-    /** "Ursula K. Le Guin" / "Gaiman & Pratchett" / "Unknown author". */
-    val authorLine: String
-        get() = when (authors.size) {
-            0 -> "Unknown author"
-            1 -> authors[0]
-            2 -> "${authors[0]} & ${authors[1]}"
-            else -> "${authors[0]} +${authors.size - 1}"
-        }
+    val hasRecommendation: Boolean get() = recommendedBy.isNotBlank() || reason.isNotBlank()
 
     /**
-     * Cover art URL at the requested [size] (`S`, `M`, or `L`), or null when
-     * Open Library has no cover on file — callers render a lettered
-     * placeholder in that case.
+     * Returns a copy moved to [newStatus] with the date bookkeeping that goes
+     * with it, so every entry point (overview, long-press menu, editor,
+     * widget) agrees on what "start" or "finish" means.
      */
-    fun coverUrl(size: Char = 'M'): String? =
-        coverId?.let { "https://covers.openlibrary.org/b/id/$it-$size.jpg" }
-
-    companion object {
-        /**
-         * Open Library returns up to several hundred subjects per work, most
-         * of them long-tail noise ("Dune (Imaginary place)"). The classifier
-         * only reads the leading entries — they're ordered by relevance — so
-         * storing more than this wastes space in the JSON blob for nothing.
-         */
-        const val MAX_SUBJECTS = 40
+    fun withStatus(newStatus: ReadingStatus, today: Long, finishedOn: Long? = null): Book = when (newStatus) {
+        ReadingStatus.WantToRead -> copy(
+            status = newStatus,
+            startedOn = null,
+            finishedOn = null,
+            currentPage = 0,
+        )
+        ReadingStatus.Reading -> copy(
+            status = newStatus,
+            // Re-reading a finished book starts a fresh read; resuming an
+            // abandoned one keeps the original start date.
+            startedOn = if (status == ReadingStatus.Read || startedOn == null) today else startedOn,
+            finishedOn = null,
+            currentPage = if (status == ReadingStatus.Read) 0 else currentPage,
+            upNext = false,
+        )
+        ReadingStatus.Read -> copy(
+            status = newStatus,
+            finishedOn = finishedOn ?: today,
+            currentPage = if (pageCount > 0) pageCount else currentPage,
+            upNext = false,
+            toAcquire = false,
+        )
+        ReadingStatus.Abandoned -> copy(
+            status = newStatus,
+            finishedOn = finishedOn ?: today,
+            upNext = false,
+        )
     }
 }
+
+/**
+ * Initial values for a new item — from a share intent, an online lookup
+ * pick, or the FAB on a particular tab.
+ */
+data class BookPrefill(
+    val title: String = "",
+    val author: String = "",
+    val url: String = "",
+    val reason: String = "",
+    val status: ReadingStatus = ReadingStatus.WantToRead,
+)

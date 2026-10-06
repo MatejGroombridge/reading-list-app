@@ -5,6 +5,7 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import dev.matejgroombridge.readinglist.ui.theme.ThemeMode
@@ -22,59 +23,56 @@ class SettingsRepository(private val context: Context) {
 
     val settings: Flow<Settings> = context.settingsDataStore.data.map { prefs ->
         Settings(
-            themeMode = prefs[KEY_THEME_MODE]?.let(::parseThemeMode) ?: ThemeMode.System,
+            themeMode = prefs[KEY_THEME_MODE]?.let { parse(it, ThemeMode.System) } ?: ThemeMode.System,
             amoled = prefs[KEY_AMOLED] ?: false,
+            showCovers = prefs[KEY_SHOW_COVERS] ?: true,
+            reminder = ReminderSettings(
+                enabled = prefs[KEY_REMINDER_ENABLED] ?: false,
+                time = prefs[KEY_REMINDER_TIME] ?: "21:00",
+            ),
+            yearlyGoal = (prefs[KEY_YEARLY_GOAL] ?: 0).coerceIn(0, MAX_YEARLY_GOAL),
+            currentReadsLimit = (prefs[KEY_CURRENT_READS_LIMIT] ?: 0).coerceIn(0, MAX_CURRENT_READS_LIMIT),
             swipeToNavigate = prefs[KEY_SWIPE_TO_NAVIGATE] ?: true,
-            groupByGenre = prefs[KEY_GROUP_BY_GENRE] ?: true,
-            shelfSort = prefs[KEY_SHELF_SORT]?.let(::parseShelfSort) ?: ShelfSort.Default,
-            mergeSmallSections = prefs[KEY_MERGE_SMALL_SECTIONS] ?: false,
-            celebrateFinishes = prefs[KEY_CELEBRATE_FINISHES] ?: true,
+            onlineLookup = prefs[KEY_ONLINE_LOOKUP] ?: true,
+            groupBy = prefs[KEY_GROUP_BY]?.let { parse(it, GroupBy.None) } ?: GroupBy.None,
+            sortOrder = prefs[KEY_SORT_ORDER]?.let { parse(it, SortOrder.Recent) } ?: SortOrder.Recent,
         )
     }
 
-    suspend fun setThemeMode(mode: ThemeMode) {
-        context.settingsDataStore.edit { prefs -> prefs[KEY_THEME_MODE] = mode.name }
+    suspend fun setThemeMode(mode: ThemeMode) = edit { it[KEY_THEME_MODE] = mode.name }
+    suspend fun setAmoled(enabled: Boolean) = edit { it[KEY_AMOLED] = enabled }
+    suspend fun setShowCovers(enabled: Boolean) = edit { it[KEY_SHOW_COVERS] = enabled }
+    suspend fun setReminderEnabled(enabled: Boolean) = edit { it[KEY_REMINDER_ENABLED] = enabled }
+    suspend fun setReminderTime(time: String) = edit { it[KEY_REMINDER_TIME] = time }
+    suspend fun setYearlyGoal(goal: Int) = edit { it[KEY_YEARLY_GOAL] = goal.coerceIn(0, MAX_YEARLY_GOAL) }
+    suspend fun setCurrentReadsLimit(limit: Int) =
+        edit { it[KEY_CURRENT_READS_LIMIT] = limit.coerceIn(0, MAX_CURRENT_READS_LIMIT) }
+    suspend fun setSwipeToNavigate(enabled: Boolean) = edit { it[KEY_SWIPE_TO_NAVIGATE] = enabled }
+    suspend fun setOnlineLookup(enabled: Boolean) = edit { it[KEY_ONLINE_LOOKUP] = enabled }
+    suspend fun setGroupBy(groupBy: GroupBy) = edit { it[KEY_GROUP_BY] = groupBy.name }
+    suspend fun setSortOrder(order: SortOrder) = edit { it[KEY_SORT_ORDER] = order.name }
+
+    private suspend fun edit(block: (androidx.datastore.preferences.core.MutablePreferences) -> Unit) {
+        context.settingsDataStore.edit { block(it) }
     }
 
-    suspend fun setAmoled(amoled: Boolean) {
-        context.settingsDataStore.edit { prefs -> prefs[KEY_AMOLED] = amoled }
-    }
+    private inline fun <reified T : Enum<T>> parse(raw: String, fallback: T): T =
+        runCatching { enumValueOf<T>(raw) }.getOrDefault(fallback)
 
-    suspend fun setSwipeToNavigate(enabled: Boolean) {
-        context.settingsDataStore.edit { prefs -> prefs[KEY_SWIPE_TO_NAVIGATE] = enabled }
-    }
+    companion object {
+        const val MAX_YEARLY_GOAL = 200
+        const val MAX_CURRENT_READS_LIMIT = 10
 
-    suspend fun setGroupByGenre(enabled: Boolean) {
-        context.settingsDataStore.edit { prefs -> prefs[KEY_GROUP_BY_GENRE] = enabled }
-    }
-
-    suspend fun setShelfSort(sort: ShelfSort) {
-        context.settingsDataStore.edit { prefs -> prefs[KEY_SHELF_SORT] = sort.name }
-    }
-
-    suspend fun setMergeSmallSections(enabled: Boolean) {
-        context.settingsDataStore.edit { prefs -> prefs[KEY_MERGE_SMALL_SECTIONS] = enabled }
-    }
-
-    suspend fun setCelebrateFinishes(enabled: Boolean) {
-        context.settingsDataStore.edit { prefs -> prefs[KEY_CELEBRATE_FINISHES] = enabled }
-    }
-
-    private fun parseThemeMode(raw: String): ThemeMode = runCatching {
-        ThemeMode.valueOf(raw)
-    }.getOrDefault(ThemeMode.System)
-
-    private fun parseShelfSort(raw: String): ShelfSort = runCatching {
-        ShelfSort.valueOf(raw)
-    }.getOrDefault(ShelfSort.Default)
-
-    private companion object {
-        val KEY_THEME_MODE = stringPreferencesKey("theme_mode")
-        val KEY_AMOLED = booleanPreferencesKey("amoled")
-        val KEY_SWIPE_TO_NAVIGATE = booleanPreferencesKey("swipe_to_navigate")
-        val KEY_GROUP_BY_GENRE = booleanPreferencesKey("group_by_genre")
-        val KEY_SHELF_SORT = stringPreferencesKey("shelf_sort")
-        val KEY_MERGE_SMALL_SECTIONS = booleanPreferencesKey("merge_small_sections")
-        val KEY_CELEBRATE_FINISHES = booleanPreferencesKey("celebrate_finishes")
+        private val KEY_THEME_MODE = stringPreferencesKey("theme_mode")
+        private val KEY_AMOLED = booleanPreferencesKey("amoled")
+        private val KEY_SHOW_COVERS = booleanPreferencesKey("show_covers")
+        private val KEY_REMINDER_ENABLED = booleanPreferencesKey("reminder_enabled")
+        private val KEY_REMINDER_TIME = stringPreferencesKey("reminder_time")
+        private val KEY_YEARLY_GOAL = intPreferencesKey("yearly_goal")
+        private val KEY_CURRENT_READS_LIMIT = intPreferencesKey("current_reads_limit")
+        private val KEY_SWIPE_TO_NAVIGATE = booleanPreferencesKey("swipe_to_navigate")
+        private val KEY_ONLINE_LOOKUP = booleanPreferencesKey("online_lookup")
+        private val KEY_GROUP_BY = stringPreferencesKey("group_by")
+        private val KEY_SORT_ORDER = stringPreferencesKey("sort_order")
     }
 }
